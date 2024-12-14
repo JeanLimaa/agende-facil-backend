@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENT
+  EMPLOYEE
+  ADMIN
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  name     String
+  email    String @unique
+  password String
+  phone    String
+
+  role Role
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt()
+
+  companyId Int? // Relacionamento com a empresa
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  appointments        Appointment[] @relation("client") // Agendamentos feitos pelo usuário (cliente)
+  managedAppointments Appointment[] @relation("employee") // Agendamentos gerenciados pelo usuário (funcionário)
+}
+
+model GuestClient {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  phone     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt()
+
+  appointments Appointment[] // Agendamentos feitos pelo cliente convidado
+}
+
+model Company {
+  id          Int       @id @default(autoincrement())
+
+  name        String
+  description String?
+  email       String    @unique
+  phone       String
+  address     String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt()
+
+  employees   User[] // Relacionamento com funcionários (usuários)
+  services    Service[] // Serviços oferecidos
+
+  subscriptions Subscription[] // Assinaturas ativas
+}
+
+model Service {
+  id           Int           @id @default(autoincrement())
+  name         String
+  description  String?
+  duration     Int // Em minutos
+  price        Float
+  companyId    Int // Relacionamento com a empresa
+  company      Company       @relation(fields: [companyId], references: [id])
+  appointments Appointment[] // Agendamentos desse serviço
+}
+
+enum Status {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model Appointment {
+  id     Int      @id @default(autoincrement())
+  date   DateTime
+  status Status   @default(PENDING) // Status do agendamento
+
+  clientId Int // Cliente que fez o agendamento
+  client   User @relation(fields: [clientId], references: [id], name: "client")
+
+  guestClientId Int? // Cliente convidado
+  guestClient   GuestClient? @relation(fields: [guestClientId], references: [id])
+
+  employeeId Int? // Funcionário responsável
+  employee   User? @relation(fields: [employeeId], references: [id], name: "employee")
+
+  serviceId Int // Serviço agendado
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt()
+
+  payment Payment? // Pagamento associado
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  ONLINE
+  OFFLINE
+}
+
+model Payment {
+  id             Int             @id @default(autoincrement())
+  amount         Float
+  status         PaymentStatus   @default(PENDING)
+
+  method         PaymentMethod   
+  stripePaymentId String?        @unique   // ID do pagamento no Stripe (se online)
+
+  appointmentId  Int             @unique  // Relacionamento com o agendamento
+  appointment    Appointment     @relation(fields: [appointmentId], references: [id])
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt()
+}
+
+enum Plan {
+  BASIC
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+}
+
+model Subscription {
+  id                Int              @id @default(autoincrement())
+  stripeSubscriptionId String         @unique        // ID da assinatura no Stripe
+  status            SubscriptionStatus @default(ACTIVE)
+
+  companyId         Int              // Relacionamento com a empresa
+  company           Company          @relation(fields: [companyId], references: [id])
+
+  plan              Plan           
+  price             Float
+
+  startDate         DateTime         @default(now())
+  endDate           DateTime?
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt()
+}
