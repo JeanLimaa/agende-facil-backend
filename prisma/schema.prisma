@@ -25,11 +25,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt()
 
-  companyId Int? // Relacionamento com a empresa
-  company   Company? @relation(fields: [companyId], references: [id])
+  //companyId Int? // Relacionamento com a empresa
+  //company   Company? @relation(fields: [companyId], references: [id])
 
-  appointments        Appointment[] @relation("client") // Agendamentos feitos pelo usuário (cliente)
-  managedAppointments Appointment[] @relation("employee") // Agendamentos gerenciados pelo usuário (funcionário)
+  employeeId Int? @unique// Referência opcional ao Employee
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  clientAppointments     Appointment[] @relation("client") // Agendamentos feitos pelo usuário (cliente)
 }
 
 model GuestClient {
@@ -55,10 +57,29 @@ model Company {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt()
 
-  employees   User[] // Relacionamento com funcionários (usuários)
+  employees   Employee[] // Relacionamento com funcionários (usuários)
   services    Service[] // Serviços oferecidos
 
   subscriptions Subscription[] // Assinaturas ativas
+}
+
+model Employee {
+  id        Int      @id @default(autoincrement())
+  name      String
+  position  String? // Cargo do funcionário (ex.: Gerente, Recepcionista, etc.)
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  //userId    Int?     @unique  // Referência opcional ao User
+  //user      User?    @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt()
+
+  appointments Appointment[] @relation("employee")// Agendamentos gerenciados pelo funcionário
+
+  user User? @relation()
 }
 
 model Service {
@@ -84,14 +105,14 @@ model Appointment {
   date   DateTime
   status Status   @default(PENDING) // Status do agendamento
 
-  clientId Int // Cliente que fez o agendamento
-  client   User @relation(fields: [clientId], references: [id], name: "client")
+  clientId Int? // Cliente que fez o agendamento
+  client   User? @relation(fields: [clientId], references: [id], name: "client")
 
   guestClientId Int? // Cliente convidado
   guestClient   GuestClient? @relation(fields: [guestClientId], references: [id])
 
-  employeeId Int? // Funcionário responsável
-  employee   User? @relation(fields: [employeeId], references: [id], name: "employee")
+  employeeId Int // Funcionário responsável
+  employee   Employee @relation(fields: [employeeId], references: [id], name: "employee")
 
   serviceId Int // Serviço agendado
   service   Service @relation(fields: [serviceId], references: [id])
