@@ -25,8 +25,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt()
 
-  //companyId Int? // Relacionamento com a empresa
-  //company   Company? @relation(fields: [companyId], references: [id])
+  companyId Int? // Relacionamento com a empresa
+  company   Company? @relation(fields: [companyId], references: [id])
 
   employeeId Int?      @unique// Referência opcional ao Employee
   employee   Employee? @relation(fields: [employeeId], references: [id])
@@ -61,6 +61,8 @@ model Company {
   services    Service[] // Serviços oferecidos
 
   subscriptions Subscription[] // Assinaturas ativas
+
+  users       User[] // Usuários da empresa
 }
 
 model Employee {
