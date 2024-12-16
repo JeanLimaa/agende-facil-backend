@@ -28,7 +28,7 @@ model User {
   //companyId Int? // Relacionamento com a empresa
   //company   Company? @relation(fields: [companyId], references: [id])
 
-  employeeId Int? @unique// Referência opcional ao Employee
+  employeeId Int?      @unique// Referência opcional ao Employee
   employee   Employee? @relation(fields: [employeeId], references: [id])
 
   clientAppointments     Appointment[] @relation("client") // Agendamentos feitos pelo usuário (cliente)
