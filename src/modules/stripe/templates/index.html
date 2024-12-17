@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teste de Assinatura com Stripe</title>
+</head>
+<body>
+  <h1>Teste de Assinatura com Stripe</h1>
+  <p>Clique no botão abaixo para criar uma sessão de pagamento e testar o plano de assinatura:</p>
+
+  <button id="subscribe-button">Assinar Plano</button>
+
+  <script>
+    document.getElementById('subscribe-button').addEventListener('click', async () => {
+      try {
+        // Requisição para o backend
+        const response = await fetch('http://localhost:3000/stripe/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            priceId: 'price_1QX545Kc3TyyVXVdbQceeMXb',
+          }),
+        });
+
+        const sessionUrl = await response.text();
+        
+        if (response.ok && sessionUrl) {
+          window.location.href = sessionUrl;
+        } else {
+          console.error('Erro ao criar sessão:', sessionUrl);
+          alert('Erro ao criar sessão de checkout');
+        }
+      } catch (error) {
+        console.error('Erro inesperado:', error);
+        alert('Erro inesperado. Verifique o console.');
+      }
+    });
+  </script>
+</body>
+</html>
