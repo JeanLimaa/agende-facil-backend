@@ -15,10 +15,8 @@ enum Role {
 
 model User {
   id       Int    @id @default(autoincrement())
-  name     String
   email    String @unique
   password String
-  phone    String
 
   role Role
 
@@ -69,6 +67,7 @@ model Employee {
   id        Int      @id @default(autoincrement())
   name      String
   position  String? // Cargo do funcionário (ex.: Gerente, Recepcionista, etc.)
+  phone     String?
 
   companyId Int
   company   Company @relation(fields: [companyId], references: [id])
@@ -173,10 +172,18 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+enum Provider {
+  STRIPE
+  APPLE
+  GOOGLE
+}
+
 model Subscription {
   id                Int              @id @default(autoincrement())
-  stripeSubscriptionId String?         @unique        // ID da assinatura no Stripe
   status            SubscriptionStatus @default(ACTIVE)
+
+  provider          Provider?         // Provedor de pagamento (Stripe, Apple, Google, etc.)
+  subscriptionId    String?           @unique        // ID da assinatura
 
   companyId         Int              @unique// Relacionamento com a empresa
   company           Company          @relation(fields: [companyId], references: [id])
