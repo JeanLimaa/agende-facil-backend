@@ -52,6 +52,8 @@ model Company {
   phone       String
   address     String?
 
+  link        String    @unique   // Link personalizado para a empresa
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt()
 
