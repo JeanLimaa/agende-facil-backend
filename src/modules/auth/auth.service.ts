@@ -2,18 +2,22 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../user/user.service';
-import { Role, User } from '@prisma/client';
+import { PlanType, Role, User } from '@prisma/client';
 import { UserLoginDto } from './dto/user-login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
+import { SubscriptionService } from '../subscription/subscription.service';
+import { DatabaseService } from 'src/services/Database.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
-    private readonly companyService: CompanyService
+    private readonly companyService: CompanyService,
+    private readonly subscriptionService: SubscriptionService,
+    private readonly prisma: DatabaseService
   ) {}
 
   private async validateUser(email: string, password: string): Promise<Omit<User, "password">> {
@@ -64,12 +68,14 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(user.password, 10);
     
+    // Criar uma empresa para o usuário
     const newCompany = await this.companyService.createCompany({
       email: user.email,
       name: user.name,
       phone: user.phone
     });
     
+    // Criar um usuário administrador para a empresa
     const newUser = await this.userService.create({
       ...user, 
       password: hashedPassword, 
@@ -77,6 +83,16 @@ export class AuthService {
       companyId: newCompany.id
     });
 
+    // Criar um plano de teste inicial para a empresa
+    const trialPlan = await this.prisma.plan.findUnique({
+      where: { name: PlanType.TRIAL }
+    })
+    await this.subscriptionService.createSubscription(
+      newCompany.id, 
+      trialPlan.id
+    );
+
+    // Criar um funcionário para o administrador
     const employee = await this.registerEmployee(newUser.id, newUser);
 
     // Update the user with the employeeId

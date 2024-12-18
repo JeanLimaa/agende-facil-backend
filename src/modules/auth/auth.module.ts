@@ -7,6 +7,7 @@ import { JwtStrategy } from './strategy/jwt.strategy';
 import { UserService } from '../user/user.service';
 import { DatabaseService } from 'src/services/Database.service';
 import { CompanyService } from '../company/company.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 @Module({
   imports: [
@@ -17,7 +18,16 @@ import { CompanyService } from '../company/company.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, UserService, DatabaseService, CompanyService],
+  providers: [
+    AuthService, 
+    JwtStrategy, 
+    UserService, 
+    DatabaseService, 
+    CompanyService, 
+    DatabaseService, 
+    CompanyService,
+    SubscriptionService,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}
