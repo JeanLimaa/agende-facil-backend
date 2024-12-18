@@ -3,14 +3,19 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
-import { DatabaseService } from './services/Database.service';
 import { StripeModule } from './modules/stripe/stripe.module';
-import { ServiceService } from './modules/service/service.service';
 import { ServiceModule } from './modules/service/service.module';
+import { CompanyModule } from './modules/company/company.module';
 
 @Module({
-  imports: [AuthModule, UserModule, StripeModule, ServiceModule],
+  imports: [
+    AuthModule,
+    UserModule, 
+    StripeModule, 
+    ServiceModule, 
+    CompanyModule
+  ],
   controllers: [AppController],
-  providers: [AppService, ServiceService],
+  providers: [AppService],
 })
 export class AppModule {}
