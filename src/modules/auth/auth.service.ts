@@ -77,10 +77,11 @@ export class AuthService {
     
     // Criar um usuário administrador para a empresa
     const newUser = await this.userService.create({
-      ...user, 
+      email: user.email, 
       password: hashedPassword, 
       role: Role.ADMIN, 
-      companyId: newCompany.id
+      companyId: newCompany.id,
+      employeeId: null
     });
 
     // Criar um plano de teste inicial para a empresa
@@ -93,7 +94,7 @@ export class AuthService {
     );
 
     // Criar um funcionário para o administrador
-    const employee = await this.registerEmployee(newUser.id, newUser);
+    const employee = await this.registerEmployee(newUser.id, user);
 
     // Update the user with the employeeId
     const userUpdated = await this.userService.update(newUser.id, { employeeId: employee.id });
@@ -122,7 +123,8 @@ export class AuthService {
     const companyId = await this.companyService.findCompanyByUserId(adminId);
     const employee = await this.userService.createEmployee({
       companyId,
-      name: user.name
+      name: user.name,
+      phone: user.phone,
     });
 
     return employee;

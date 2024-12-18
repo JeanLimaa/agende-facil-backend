@@ -8,7 +8,7 @@ export class UserService {
         private readonly prisma: DatabaseService
     ){}
 
-    async create(data: Prisma.UserCreateManyInput){
+    async create(data: Prisma.UserCreateManyInput): Promise<User> {
         return await this.prisma.user.create({
             data
         });
