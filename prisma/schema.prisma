@@ -152,9 +152,19 @@ model Payment {
   updatedAt      DateTime        @updatedAt()
 }
 
-enum Plan {
-  BASIC
+enum PlanType {
+  TRIAL
   PRO
+}
+
+model Plan {
+  id          Int       @id @default(autoincrement())
+  name        PlanType  @unique // Nome do plano (ex: "Grátis", "PRO")
+  description String?   // Descrição do plano
+  price       Float     // Valor do plano
+  duration    Int       // Duração em dias (ex: 15, 30, etc.)
+  isActive    Boolean   @default(true) // Plano ativo ou não
+  subscriptions Subscription[]
 }
 
 enum SubscriptionStatus {
@@ -165,14 +175,14 @@ enum SubscriptionStatus {
 
 model Subscription {
   id                Int              @id @default(autoincrement())
-  stripeSubscriptionId String         @unique        // ID da assinatura no Stripe
+  stripeSubscriptionId String?         @unique        // ID da assinatura no Stripe
   status            SubscriptionStatus @default(ACTIVE)
 
-  companyId         Int              // Relacionamento com a empresa
+  companyId         Int              @unique// Relacionamento com a empresa
   company           Company          @relation(fields: [companyId], references: [id])
 
-  plan              Plan           
-  price             Float
+  planId            Int              // Relacionamento com o plano
+  plan              Plan             @relation(fields: [planId], references: [id])
 
   startDate         DateTime         @default(now())
   endDate           DateTime?
