@@ -53,13 +53,13 @@ export class ServiceService {
         );
     }
 
-    /* public async listByEmployee(employeeId: number): Promise<Service[]> {
+    public async listByCategoryId(categoryId: number): Promise<Service[]> {
         return await this.prisma.service.findMany(
             {
                 where: {
-                    employeeId: employeeId
+                    categoryId: categoryId
+                }
             }
-        }
-        );
-    } */
+        )
+    }
 }

@@ -40,10 +40,17 @@ export class ServiceController {
         return await this.serviceService.delete(id);
     }
 
-    @Get("/list/:companyId")
-    public async listByCompany(
+    @Get("/list/company/:companyId")
+    public async listByCompanyId(
         @Param('companyId', ParseIntPipe) companyId: number,
     ){
         return await this.serviceService.listByCompanyId(companyId);
     }
+
+    @Get("/list/category/:categoryId")
+    public async listByCategory(
+        @Param('categoryId', ParseIntPipe) categoryId: number,
+    ){
+        return await this.serviceService.listByCategoryId(categoryId);
+    }   
 }

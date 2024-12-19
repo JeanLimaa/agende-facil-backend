@@ -21,12 +21,12 @@ export class EmployeeController {
   }
 
   @Get(':employeeId')
-  async getEmployeeById(@Param('employeeId') employeeId: number) {
+  async getEmployeeById(@Param('employeeId', ParseIntPipe) employeeId: number) {
     return await this.employeeService.getEmployeeById(employeeId);
   }
 
   @Get('list/:companyId')
-  async listByCompanyId(@Param('companyId') companyId: number) {
+  async listByCompanyId(@Param('companyId', ParseIntPipe) companyId: number) {
     return await this.employeeService.listByCompanyId(companyId);
   }
 }
