@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 import slugify from 'slugify';
@@ -63,7 +63,7 @@ export class CompanyService {
         return company;
     }
 
-    public async findCompanyByUserId(userId: number) {
+    public async findCompanyIdByUserId(userId: number) {
         const user = await this.prisma.user.findFirst({
             where: {
                 id: userId
@@ -86,6 +86,20 @@ export class CompanyService {
 
         if (!company) {
             throw new UnauthorizedException('Empresa não encontrada');
+        }
+
+        return company;
+    }
+
+    public async getCompanyByLinkName(linkName: string) {
+        const company = await this.prisma.company.findFirst({
+            where: {
+                link: linkName
+            }
+        });
+
+        if (!company) {
+            throw new NotFoundException('Empresa não encontrada');
         }
 
         return company;

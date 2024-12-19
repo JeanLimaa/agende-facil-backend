@@ -120,7 +120,7 @@ export class AuthService {
     }
     //await this.validateNewUser(user);
 
-    const companyId = await this.companyService.findCompanyByUserId(adminId);
+    const companyId = await this.companyService.findCompanyIdByUserId(adminId);
     const employee = await this.userService.createEmployee({
       companyId,
       name: user.name,

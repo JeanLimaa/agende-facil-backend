@@ -6,6 +6,7 @@ import { UserModule } from './modules/user/user.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { ServiceModule } from './modules/service/service.module';
 import { CompanyModule } from './modules/company/company.module';
+import { CategoryModule } from './modules/category/category.module';
 
 @Module({
   imports: [
@@ -13,7 +14,8 @@ import { CompanyModule } from './modules/company/company.module';
     UserModule, 
     StripeModule, 
     ServiceModule, 
-    CompanyModule
+    CompanyModule,
+    CategoryModule
   ],
   controllers: [AppController],
   providers: [AppService],

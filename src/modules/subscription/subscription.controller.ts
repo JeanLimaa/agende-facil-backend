@@ -14,7 +14,7 @@ export class SubscriptionController {
     @UseGuards(JwtAuthGuard)
     @Post('subscribe-pro')
     async upgradeToPro(@GetUser('userId') userId: number) {
-        const companyId = await this.companyService.findCompanyByUserId(userId);
+        const companyId = await this.companyService.findCompanyIdByUserId(userId);
         return this.subscriptionService.updateSubscriptionToPro(companyId);
     }
 }

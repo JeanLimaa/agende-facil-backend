@@ -8,26 +8,26 @@ export class ServiceService {
         private readonly prisma: DatabaseService
     ) {}
 
-    async create(data: Prisma.ServiceCreateManyInput): Promise<Prisma.ServiceCreateManyInput> {
+    public async create(data: Prisma.ServiceCreateManyInput): Promise<Prisma.ServiceCreateManyInput> {
         return await this.prisma.service.create({
             data
         });
     }
 
-    async update(id: number, data: Prisma.ServiceUncheckedUpdateManyInput): Promise<Prisma.ServiceUncheckedUpdateManyInput> {
+    public async update(id: number, data: Prisma.ServiceUncheckedUpdateManyInput): Promise<Prisma.ServiceUncheckedUpdateManyInput> {
         return await this.prisma.service.update({
             where: { id },
             data,
         });
     }
 
-    async delete(id: number): Promise<Service> {
+    public async delete(id: number): Promise<Service> {
         return await this.prisma.service.delete({
             where: { id }
         });
     }
 
-    async listByCompany(companyId: number): Promise<Service[]> {
+    public async listByCompany(companyId: number): Promise<Service[]> {
         return await this.prisma.service.findMany(
             {
                 where: {
@@ -36,4 +36,14 @@ export class ServiceService {
         }
         );
     }
+
+    /* public async listByEmployee(employeeId: number): Promise<Service[]> {
+        return await this.prisma.service.findMany(
+            {
+                where: {
+                    employeeId: employeeId
+            }
+        }
+        );
+    } */
 }
