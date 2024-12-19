@@ -43,7 +43,7 @@ export class ServiceService {
         });
     }
 
-    public async listByCompany(companyId: number): Promise<Service[]> {
+    public async listByCompanyId(companyId: number): Promise<Service[]> {
         return await this.prisma.service.findMany(
             {
                 where: {

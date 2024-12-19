@@ -7,6 +7,8 @@ import { StripeModule } from './modules/stripe/stripe.module';
 import { ServiceModule } from './modules/service/service.module';
 import { CompanyModule } from './modules/company/company.module';
 import { CategoryModule } from './modules/category/category.module';
+import { EmployeeServicesModule } from './modules/employee-services/employee-services.module';
+import { EmployeeModule } from './modules/employee/employee.module';
 
 @Module({
   imports: [
@@ -15,7 +17,9 @@ import { CategoryModule } from './modules/category/category.module';
     StripeModule, 
     ServiceModule, 
     CompanyModule,
-    CategoryModule
+    CategoryModule,
+    EmployeeServicesModule,
+    EmployeeModule
   ],
   controllers: [AppController],
   providers: [AppService],

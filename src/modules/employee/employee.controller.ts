@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { EmployeeService } from './employee.service';
 
 @Controller('employee')
@@ -18,5 +18,15 @@ export class EmployeeController {
     );
     
     return { availableTimes };
+  }
+
+  @Get(':employeeId')
+  async getEmployeeById(@Param('employeeId') employeeId: number) {
+    return await this.employeeService.getEmployeeById(employeeId);
+  }
+
+  @Get('list/:companyId')
+  async listByCompanyId(@Param('companyId') companyId: number) {
+    return await this.employeeService.listByCompanyId(companyId);
   }
 }

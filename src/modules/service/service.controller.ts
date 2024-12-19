@@ -44,6 +44,6 @@ export class ServiceController {
     public async listByCompany(
         @Param('companyId', ParseIntPipe) companyId: number,
     ){
-        return await this.serviceService.listByCompany(companyId);
+        return await this.serviceService.listByCompanyId(companyId);
     }
 }

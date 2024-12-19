@@ -8,6 +8,18 @@ export class EmployeeService {
         private readonly prisma: DatabaseService
     ) { }
 
+    public async getEmployeeById(employeeId: number) {
+        return await this.prisma.employee.findUnique({
+            where: { id: employeeId }
+        });
+    }
+
+    public async listByCompanyId(companyId: number) {
+        return await this.prisma.employee.findMany({
+            where: { companyId }
+        });
+    }
+
     // Verificar disponibilidade do funcionário para determinado serviço e data
     async getAvailableTimes(employeeId: number, serviceId: number, date: Date) {
         const service = await this.prisma.service.findUnique({
