@@ -9,6 +9,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { DatabaseService } from 'src/services/Database.service';
+import { UserPayload } from './interfaces/UserPayload.interface';
 
 @Injectable()
 export class AuthService {
@@ -44,7 +45,7 @@ export class AuthService {
 
     const user = await this.validateUser(body.email, body.password);
     
-    const payload = { sub: user.id, email: user.email, role: user.role };
+    const payload: UserPayload = { id: user.id, email: user.email, role: user.role, companyId: user.companyId };
 
     return {
       access_token: this.jwtService.sign(payload),
