@@ -63,6 +63,8 @@ model Company {
   subscriptions Subscription[] // Assinaturas ativas
 
   users       User[] // Usuários da empresa
+
+  category    Category[] // Categorias de serviços
 }
 
 model Employee {
@@ -85,10 +87,15 @@ model Employee {
 
 model Category {
   id          Int       @id @default(autoincrement())
-  name        String    @unique
+  name        String    
   description String?
 
+  companyId   Int
+  company     Company   @relation(fields: [companyId], references: [id])
+
   services    Service[]
+
+  @@unique([companyId, name])
 }
 
 model Service {
