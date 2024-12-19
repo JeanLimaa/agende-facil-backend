@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Service } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
@@ -15,6 +15,14 @@ export class ServiceService {
     }
 
     public async update(id: number, data: Prisma.ServiceUncheckedUpdateManyInput): Promise<Prisma.ServiceUncheckedUpdateManyInput> {
+        const service = await this.prisma.service.findUnique({
+            where: { id }
+        })
+
+        if (!service) {
+            throw new NotFoundException('Serviço não encontrado');
+        }
+        
         return await this.prisma.service.update({
             where: { id },
             data,
@@ -22,6 +30,14 @@ export class ServiceService {
     }
 
     public async delete(id: number): Promise<Service> {
+        const service = await this.prisma.service.findUnique({
+            where: { id }
+        })
+
+        if (!service) {
+            throw new NotFoundException('Serviço não encontrado');
+        }
+
         return await this.prisma.service.delete({
             where: { id }
         });
