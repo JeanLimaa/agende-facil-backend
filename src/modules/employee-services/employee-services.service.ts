@@ -14,19 +14,43 @@ export class EmployeeServicesService {
     public async createMany(employeeServicePairs: EmployeeServiceDTO) {
         const employeeId = employeeServicePairs.employeeId;
 
-        const createPromises = employeeServicePairs.services.map(pair => 
-            this.prisma.employeeServices.create({
+        const employee = await this.employeeService.getEmployeeById(employeeId);
+        if (!employee) {
+            throw new NotFoundException('Funcionário não encontrado');
+        }
+
+        const createPromises = employeeServicePairs.services.map(async pair => {
+            const existingRelation = await this.prisma.employeeServices.findUnique({
+                where: {
+                    employeeId_serviceId: {
+                        employeeId: employeeId,
+                        serviceId: pair.serviceId,
+                    },
+                },
+            });
+
+            if (existingRelation) {
+                throw new ConflictException('Relação entre funcionário e serviço já existe');
+            }
+
+            return this.prisma.employeeServices.create({
                 data: {
                     employeeId: employeeId,
                     serviceId: pair.serviceId,
                 },
-            })
-        );
+            });
+        });
+
         return await Promise.all(createPromises);
     }
 
     public async deleteMany(employeeServicePairs: EmployeeServiceDTO) {
         const employeeId = employeeServicePairs.employeeId;
+
+        const employee = await this.employeeService.getEmployeeById(employeeId);
+        if (!employee) {
+            throw new NotFoundException('Funcionário não encontrado');
+        }
 
         const deletePromises = employeeServicePairs.services.map(pair => 
             this.prisma.employeeServices.deleteMany({
@@ -47,34 +71,4 @@ export class EmployeeServicesService {
 
         return employeeServices.map(employeeService => employeeService.employee);
     }
-
-    /*     public async create(employeeId: number, serviceId: number): Promise<void> {
-        const employee = await this.employeeService.getEmployeeById(employeeId);
-
-        if (!employee) {
-            throw new NotFoundException('Funcionário não encontrado');
-        }
-
-        const service = await this.prisma.service.findUnique({
-            where: { id: serviceId }
-        });
-
-        if (!service) {
-            throw new NotFoundException('Serviço não encontrado');
-        }
-
-        try {
-            await this.prisma.employeeServices.create({
-                data: {
-                    employeeId,
-                    serviceId,
-                }
-            });
-        } catch (error) {
-            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                throw new ConflictException('Relação entre funcionário e serviço já existe');
-            }
-            throw error;
-        }
-    } */
 }
