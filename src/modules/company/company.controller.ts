@@ -11,6 +11,6 @@ export class CompanyController {
     async getCompany(
         @Param('name') name: string
     ) {
-        return this.companyService.getCompanyByName(name);
+        return this.companyService.getCompanyByLinkName(name);
     }
 }
