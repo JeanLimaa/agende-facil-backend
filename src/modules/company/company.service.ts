@@ -40,10 +40,27 @@ export class CompanyService {
         return link;
     }
 
-    public async createCompany(data: Omit<Prisma.CompanyCreateInput, 'link'>) {
+    public async createCompany(
+        data: Omit<Prisma.CompanyCreateInput, 'link'>,
+        prisma: Prisma.TransactionClient = this.prisma
+    ) {
         const link = await this.generateUniqueLink(data.name);
 
-        const company = await this.prisma.company.create({
+        if (!link) {
+            throw new NotFoundException('Link não encontrado');
+        }
+
+        const companys = await this.prisma.company.findMany({
+            where: {
+                email: data.email
+            }
+        });
+
+        if (companys.length > 0) {
+            throw new UnauthorizedException('Empresa com esse e-mail já existe.');
+        }
+
+        const company = await prisma.company.create({
             data: {
                 ...data,
                 link
@@ -92,6 +109,7 @@ export class CompanyService {
     }
 
     public async getCompanyByLinkName(linkName: string) {
+        console.log(linkName);
         const company = await this.prisma.company.findFirst({
             where: {
                 link: linkName

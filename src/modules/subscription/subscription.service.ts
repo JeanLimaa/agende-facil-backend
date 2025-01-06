@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PlanType, SubscriptionStatus } from '@prisma/client';
+import { PlanType, Prisma, SubscriptionStatus } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
 @Injectable()
@@ -8,7 +8,7 @@ export class SubscriptionService {
         private readonly prisma: DatabaseService,
     ) { }
 
-    async createSubscription(companyId: number, planId: number) {
+    async createSubscription(companyId: number, planId: number, transactionPrisma: Prisma.TransactionClient = this.prisma) {
         const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
 
         if (!plan || !plan.isActive) {
@@ -19,7 +19,7 @@ export class SubscriptionService {
         const endDate = new Date();
         endDate.setDate(startDate.getDate() + plan.duration); // Define a data final
 
-        return this.prisma.subscription.create({
+        return transactionPrisma.subscription.create({
             data: {
                 companyId,
                 planId,

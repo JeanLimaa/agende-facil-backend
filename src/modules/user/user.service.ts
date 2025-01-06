@@ -1,5 +1,5 @@
-import { Injectable } from "@nestjs/common";
-import { Employee, Prisma, User } from "@prisma/client";
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { Employee, Prisma, PrismaClient, User } from "@prisma/client";
 import { DatabaseService } from "src/services/Database.service";
 
 @Injectable()
@@ -8,8 +8,18 @@ export class UserService {
         private readonly prisma: DatabaseService
     ){}
 
-    async create(data: Prisma.UserCreateManyInput): Promise<User> {
-        return await this.prisma.user.create({
+    async create(data: Prisma.UserCreateManyInput, prisma: Prisma.TransactionClient = this.prisma): Promise<User> {
+        const usersExists = await prisma.user.findMany({
+            where: {
+                email: data.email
+            }
+        });
+        
+        if(usersExists.length > 0){
+            throw new BadRequestException('Usuario com esse e-mail já existe.');
+        }
+        
+        return await prisma.user.create({
             data
         });
     }
