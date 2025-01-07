@@ -9,6 +9,7 @@ import { CompanyModule } from './modules/company/company.module';
 import { CategoryModule } from './modules/category/category.module';
 import { EmployeeServicesModule } from './modules/employee-services/employee-services.module';
 import { EmployeeModule } from './modules/employee/employee.module';
+import { AppointmentModule } from './modules/appointments/appointment.module';
 
 @Module({
   imports: [
@@ -19,7 +20,8 @@ import { EmployeeModule } from './modules/employee/employee.module';
     CompanyModule,
     CategoryModule,
     EmployeeServicesModule,
-    EmployeeModule
+    EmployeeModule,
+    AppointmentModule
   ],
   controllers: [AppController],
   providers: [AppService],

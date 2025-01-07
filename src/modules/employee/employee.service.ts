@@ -22,7 +22,7 @@ export class EmployeeService {
 
     // Verificar disponibilidade do funcionário para determinado serviço e data
     async getAvailableTimes(employeeId: number, serviceId: number, date: Date) {
-        const service = await this.prisma.service.findUnique({
+        const service = await this.prisma.service.findFirst({
             where: { id: serviceId },
         });
 

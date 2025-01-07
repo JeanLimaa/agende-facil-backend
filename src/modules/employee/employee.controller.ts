@@ -7,7 +7,7 @@ export class EmployeeController {
 
   @Get(':employeeId/available-times')
   async getAvailableTimes(
-    @Param('employeeId') employeeId: number,
+    @Param('employeeId', ParseIntPipe) employeeId: number,
     @Query('serviceId') serviceId: number,
     @Query('date') date: string,
   ) {

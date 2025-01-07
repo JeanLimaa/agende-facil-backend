@@ -1,19 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/Database.service';
 import { Appointment, Status } from '@prisma/client';
+import { CreateAppointmentDto } from './dto/create-appointment.dto';
 
 @Injectable()
 export class AppointmentService {
   constructor(private readonly prisma: DatabaseService) {}
 
   // Criar agendamento de serviço
-  async createAppointment(data: {
-    date: Date;
-    clientId?: number;
-    guestClientId?: number;
-    employeeId: number;
-    serviceId: number;
-  }) {
+  async createAppointment(data: CreateAppointmentDto): Promise<Appointment> {
     // Verifica a disponibilidade do funcionário e do serviço no horário desejado
     const existingAppointment = await this.prisma.appointment.findFirst({
       where: {
@@ -57,6 +52,12 @@ export class AppointmentService {
   async listAppointments() {
     return this.prisma.appointment.findMany({
       where: { status: Status.PENDING }, // Filtra por agendamentos pendentes
+    });
+  }
+
+  async findAppointmentById(id: number) {
+    return this.prisma.appointment.findUnique({
+      where: { id },
     });
   }
 }
