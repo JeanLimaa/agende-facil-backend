@@ -76,6 +76,8 @@ model Employee {
   companyId Int
   company   Company @relation(fields: [companyId], references: [id])
 
+  serviceInterval  Int    @default(30)// Intervalo entre agendamentos (em minutos)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt()
 
