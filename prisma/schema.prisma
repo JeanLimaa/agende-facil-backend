@@ -68,15 +68,17 @@ model Company {
 }
 
 model Employee {
-  id        Int      @id @default(autoincrement())
+  id        Int      @id @default(autoincrement()) @unique
   name      String
   position  String? // Cargo do funcionário (ex.: Gerente, Recepcionista, etc.)
   phone     String?
 
+  startHour String? // Horário de início do expediente - OBS: COLOCAR COMO OBRIGATORIO DPS
+  endHour   String? // Horário de término do expediente
+  serviceInterval  Int    @default(30)// Intervalo entre agendamentos (em minutos)
+
   companyId Int
   company   Company @relation(fields: [companyId], references: [id])
-
-  serviceInterval  Int    @default(30)// Intervalo entre agendamentos (em minutos)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt()
