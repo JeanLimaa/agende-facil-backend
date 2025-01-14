@@ -2,6 +2,9 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Status } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
+import { format, isBefore, isAfter, addMinutes, startOfDay, endOfDay, parseISO, isEqual } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
 @Injectable()
 export class EmployeeService {
     constructor(
@@ -21,51 +24,58 @@ export class EmployeeService {
     }
 
     // Verificar disponibilidade do funcionário para determinado serviço e data
-    async getAvailableTimes(employeeId: number, serviceId: number, date: Date) {
-        const service = await this.prisma.service.findFirst({
-            where: { id: serviceId },
-        });
+    async getAvailableTimes(employeeId: number, date: string) {
+        const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+        if (!employee) throw new BadRequestException('Funcionário não encontrado');
 
-        if (!service) {
-            throw new BadRequestException('Serviço não encontrado');
-        }
+        const parsedDate = parseISO(date + " 00:00:00");
+        if (isNaN(parsedDate.getTime())) throw new BadRequestException('Data inválida');
 
-        const serviceDuration = service.duration; // Duração do serviço em minutos
+        const employeeStartHour = this.parseTimeToMinutes(employee.startHour);  // Ex: Converte "09:00" (HH:mm) para minutos
+        const employeeEndHour = this.parseTimeToMinutes(employee.endHour);
+        const interval = employee.serviceInterval;
 
-        // Buscar agendamentos do funcionário no dia escolhido
+        const dayStart = startOfDay(parsedDate);
+        const dayEnd = endOfDay(parsedDate);
+
         const appointments = await this.prisma.appointment.findMany({
             where: {
                 employeeId,
                 date: {
-                    gte: new Date(date.setHours(0, 0, 0, 0)), // A partir da meia-noite do dia
-                    lt: new Date(date.setHours(23, 59, 59, 999)), // Até a última hora do dia
+                    gte: dayStart,
+                    lte: dayEnd,
                 },
-                status: Status.PENDING, // Agendamentos pendentes
+                status: Status.PENDING,
             },
+            include: { service: true },
         });
 
-        // Listar os horários disponíveis para o funcionário no dia
         const availableTimes: string[] = [];
-        let startTime = new Date(date);
+        
+        for (let minutes = employeeStartHour; minutes <= employeeEndHour; minutes += interval) {
+            const proposedTime = addMinutes(dayStart, minutes);
+            
+            const isAvailable = !appointments.some(appointment => {
+                const appointmentStart = new Date(appointment.date);
+                const appointmentDuration = appointment.service?.duration || interval;
+                const appointmentEnd = addMinutes(appointmentStart, appointmentDuration);
 
-        // verificar cada intervalo de tempo (em minutos) durante o dia
-        for (let hour = 0; hour < 24; hour++) {
-            for (let minute = 0; minute < 60; minute += serviceDuration) {
-                const proposedStartTime = new Date(startTime.setHours(hour, minute));
-
-                // Verificar se o horário já está ocupado
-                const isAvailable = !appointments.some((appointment) => {
-                    const appointmentStart = new Date(appointment.date);
-                    const appointmentEnd = new Date(appointmentStart.getTime() + service.duration * 60000); // Duração em milissegundos
-                    return proposedStartTime >= appointmentStart && proposedStartTime <= appointmentEnd;
-                });
-
-                if (isAvailable) {
-                    availableTimes.push(proposedStartTime.toLocaleTimeString());
-                }
+                const isIntersecting = isBefore(proposedTime, appointmentEnd) && isAfter(proposedTime, appointmentStart);
+                return isEqual(proposedTime, appointmentStart) || isIntersecting;
+            });
+            
+            if (isAvailable) {
+                const time = format(proposedTime, 'HH:mm', { locale: ptBR });
+                availableTimes.push(time);
             }
         }
 
         return availableTimes;
+    }
+    
+    private parseTimeToMinutes(time: string | null): number {
+        if (!time) throw new Error('Horário inválido');
+        const [hours, minutes] = time.split(':').map(Number);
+        return hours * 60 + minutes;
     }
 }

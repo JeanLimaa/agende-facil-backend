@@ -8,13 +8,11 @@ export class EmployeeController {
   @Get(':employeeId/available-times')
   async getAvailableTimes(
     @Param('employeeId', ParseIntPipe) employeeId: number,
-    @Query('serviceId') serviceId: number,
     @Query('date') date: string,
   ) {
     const availableTimes = await this.employeeService.getAvailableTimes(
       employeeId,
-      serviceId,
-      new Date(date),
+      date,
     );
     
     return { availableTimes };
