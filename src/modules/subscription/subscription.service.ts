@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { PlanType, Prisma, SubscriptionStatus } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
@@ -12,7 +12,7 @@ export class SubscriptionService {
         const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
 
         if (!plan || !plan.isActive) {
-            throw new Error('Plano inválido ou inativo.');
+            throw new BadRequestException('Plano inválido ou inativo.');
         }
 
         const startDate = new Date();
@@ -56,7 +56,7 @@ export class SubscriptionService {
         });
 
         if (!planPro) {
-            throw new Error('Plano PRO não encontrado ou inativo.');
+            throw new BadRequestException('Plano PRO não encontrado ou inativo.');
         }
 
         const startDate = new Date();
