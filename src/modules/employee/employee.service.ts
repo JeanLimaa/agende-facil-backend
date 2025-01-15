@@ -28,8 +28,12 @@ export class EmployeeService {
         const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
         if (!employee) throw new BadRequestException('Funcionário não encontrado');
 
+        
         const parsedDate = parseISO(date + " 00:00:00");
-        if (isNaN(parsedDate.getTime())) throw new BadRequestException('Data inválida');
+        if (isNaN(parsedDate.getTime())) throw new BadRequestException('Data inválida. Esperado formato: "yyyy-MM-dd"');
+     
+        const today = startOfDay(new Date());
+        if(isBefore(parsedDate, today)) throw new BadRequestException('A data não pode ser anterior a hoje.');
 
         const employeeStartHour = this.parseTimeToMinutes(employee.startHour);  // Ex: Converte "09:00" (HH:mm) para minutos
         const employeeEndHour = this.parseTimeToMinutes(employee.endHour);
