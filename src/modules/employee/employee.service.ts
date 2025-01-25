@@ -23,6 +23,12 @@ export class EmployeeService {
         });
     }
 
+   /*  public async listByCategoryId(categoryId: number, companyId: number) {
+        return await this.prisma.employee.findMany({
+            where: { categoryId }
+        });
+    }; */
+
     // Verificar disponibilidade do funcionário para determinado serviço e data
     async getAvailableTimes(employeeId: number, date: string) {
         const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
@@ -51,17 +57,31 @@ export class EmployeeService {
                 },
                 status: Status.PENDING,
             },
-            include: { service: true },
+            include: { appointmentServices: true },
         });
 
+        const serviceIds = appointments
+        .map(appointment => appointment.appointmentServices.map(as => as.serviceId))
+        .flat();
+
+        const services = await this.prisma.service.findMany({
+            where: { id: { in: serviceIds } },
+        });
+            
         const availableTimes: string[] = [];
         
+
         for (let minutes = employeeStartHour; minutes <= employeeEndHour; minutes += interval) {
             const proposedTime = addMinutes(dayStart, minutes);
             
             const isAvailable = !appointments.some(appointment => {
                 const appointmentStart = new Date(appointment.date);
-                const appointmentDuration = appointment.service?.duration || interval;
+
+                const appointmentDuration = appointment.appointmentServices.reduce((acc, as) => {
+                    const service = services.find(s => s.id === as.serviceId);
+                    return acc + (service?.duration || interval);
+                }, 0);
+                
                 const appointmentEnd = addMinutes(appointmentStart, appointmentDuration);
 
                 const isIntersecting = isBefore(proposedTime, appointmentEnd) && isAfter(proposedTime, appointmentStart);

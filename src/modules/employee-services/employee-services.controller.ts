@@ -30,4 +30,9 @@ export class EmployeeServicesController {
     async listAllEmployeeToService(@Param('serviceId', ParseIntPipe) serviceId: number) {
         return await this.employeeServicesService.listAllEmployeeToService(serviceId);
     }
+
+/*     @Get('list-by-category/:categoryId')
+    async listByCategory(@Param('categoryId', ParseIntPipe) categoryId: number) {
+        return await this.employeeServicesService.listByCategory(categoryId);
+    } */
 }
