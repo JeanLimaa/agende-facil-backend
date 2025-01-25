@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsDateString } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsDateString, IsArray } from 'class-validator';
 
 export class CreateAppointmentDto {
     //@IsNotEmpty()
@@ -18,5 +18,6 @@ export class CreateAppointmentDto {
     
     //@IsNumber()
     @IsNotEmpty({message: "ID do serviço não informado."})
-    serviceId: number;
+    @IsArray({message: "Os ID's do serviço precisam estar contidos em um array."})
+    serviceId: number[];
 }

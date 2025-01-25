@@ -22,16 +22,29 @@ export class AppointmentService {
       throw new BadRequestException('Funcionário já tem outro agendamento nesse horário.');
     }
 
-    return await this.prisma.appointment.create({
+    const appointment = await this.prisma.appointment.create({
       data: {
         date: data.date,
         clientId: data.clientId,
         guestClientId: data.guestClientId,
         employeeId: data.employeeId,
-        serviceId: data.serviceId,
+        //serviceId: data.serviceId,
         status: Status.PENDING, // Status inicial como PENDENTE
       },
     });
+
+    const appointmentServices = await this.prisma.appointmentService.createMany({
+      data: data.serviceId.map((serviceId) => ({
+        appointmentId: appointment.id,
+        serviceId,
+      })),
+    });
+
+    if(!appointmentServices) {
+      throw new BadRequestException('Erro ao criar agendamento.');
+    };
+
+    return appointment;
   }
 
   async updateAppointmentStatus(id: number, status: Status) {
