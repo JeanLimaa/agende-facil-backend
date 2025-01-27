@@ -1,12 +1,10 @@
 import { IsString, IsNotEmpty, IsNumber, IsDateString, IsArray } from 'class-validator';
+import { IsDateTime } from 'src/decorators/ClassValidator.decorator';
 
 export class CreateAppointmentDto {
     //@IsNotEmpty()
-    @IsDateString()
+    @IsDateTime({message: "Data do agendamento inválida. Precisa ser DateTime."})
     date: string;
-
-    @IsString({message: "Hora precisa ser uma string. Ex: 08:00"})
-    hours: string;
 
     clientId?: number;
 
