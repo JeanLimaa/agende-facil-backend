@@ -86,7 +86,7 @@ model Employee {
   appointments Appointment[] @relation("employee")// Agendamentos gerenciados pelo funcionário
 
   user User? @relation()
-  employeeServices    EmployeeServices[] // Serviços prestados pelo funcionário
+  employeeCategorys    EmployeeCategorys[] // Serviços prestados pelo funcionário
 }
 
 model Category {
@@ -98,6 +98,8 @@ model Category {
   company     Company   @relation(fields: [companyId], references: [id])
 
   services    Service[]
+
+  employeeCategorys EmployeeCategorys[]
 
   @@unique([companyId, name])
 }
@@ -112,21 +114,25 @@ model Service {
   company      Company       @relation(fields: [companyId], references: [id])
   appointments AppointmentService[] // Agendamentos desse serviço
 
-  employeeServices    EmployeeServices[] // Funcionários que prestam esse serviço
+  //employeeCategorys    EmployeeCategorys[] // Funcionários que prestam esse serviço
 
   categoryId   Int
   category     Category @relation(fields: [categoryId], references: [id])
 }
 
-model EmployeeServices {
+model EmployeeCategorys {
   id         Int       @id @default(autoincrement())
+
   employeeId Int
-  serviceId  Int
-
   employee   Employee  @relation(fields: [employeeId], references: [id])
-  service    Service   @relation(fields: [serviceId], references: [id])
 
-  @@unique([employeeId, serviceId]) // Garante que um funcionário não preste o mesmo serviço mais de uma vez
+  categoryId Int
+  category   Category  @relation(fields: [categoryId], references: [id])
+  //serviceId  Int
+  //service    Service   @relation(fields: [serviceId], references: [id])
+  
+
+  @@unique([employeeId, categoryId]) // Garante que um funcionário não preste o mesmo serviço mais de uma vez
 }
 
 enum Status {

@@ -1,18 +1,18 @@
 import { IsInt, IsArray, ArrayNotEmpty, ValidateNested, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class EmployeeServiceDTO {
+export class EmployeeCategoryDTO {
     @IsInt()
     employeeId: number;
 
     @IsArray()
     @ArrayNotEmpty()
     @ValidateNested({ each: true })
-    @Type(() => EmployeeServicePair)
-    services: EmployeeServicePair[];
+    @Type(() => EmployeeCategorysPair)
+    categorys: EmployeeCategorysPair[];
 }
 
-export class EmployeeServicePair {
+export class EmployeeCategorysPair {
     @IsInt()
-    serviceId: number;
-}
+    categoryId: number;
+} 
