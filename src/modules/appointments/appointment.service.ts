@@ -100,4 +100,10 @@ export class AppointmentService {
       where: { id },
     });
   }
+
+  async deleteAppointment(id: number) {
+    return this.prisma.appointment.delete({
+      where: { id },
+    });
+  }
 }
