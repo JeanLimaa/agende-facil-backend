@@ -100,7 +100,11 @@ export class AuthService {
     // Update the user with the employeeId
     const userUpdated = await this.userService.update(newUser.id, { employeeId: employee.id });
 
-    return userUpdated;
+    const payload: UserPayload = { id: userUpdated.id, email: userUpdated.email, role: userUpdated.role, companyId: userUpdated.companyId };
+
+    return {
+      access_token: this.jwtService.sign(payload),
+    };
   }
 
   public async isAdminRequest(userId: number){
