@@ -38,6 +38,28 @@ export class AuthService {
     return result; // Remove a senha do resultado
   }
 
+  private async validateNewUser(user: CreateUserDto | CreateEmployeeDto) {
+    if (!user.email || !user.password) {
+      throw new UnauthorizedException('O email e a senha são obrigatórios');
+    }
+
+    const userExists = await this.userService.findByEmail(user.email);
+    
+    if (userExists) {
+      throw new UnauthorizedException('Email já cadastrado');
+    }
+  }
+
+  private async isAdminRequest(userId: number){
+    const admin = await this.userService.findById(userId);
+
+    if (!admin || admin.role !== Role.ADMIN) {
+      return false;
+    }
+
+    return true;
+  }
+
   public async login(body: UserLoginDto) {
     if (!body.email || !body.password) {
       throw new UnauthorizedException('O email e a senha são obrigatórios');
@@ -50,18 +72,6 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(payload),
     };
-  }
-
-  public async validateNewUser(user: CreateUserDto | CreateEmployeeDto) {
-    if (!user.email || !user.password) {
-      throw new UnauthorizedException('O email e a senha são obrigatórios');
-    }
-
-    const userExists = await this.userService.findByEmail(user.email);
-    
-    if (userExists) {
-      throw new UnauthorizedException('Email já cadastrado');
-    }
   }
 
   public async register(user: CreateUserDto){
@@ -105,16 +115,6 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(payload),
     };
-  }
-
-  public async isAdminRequest(userId: number){
-    const admin = await this.userService.findById(userId);
-
-    if (!admin || admin.role !== Role.ADMIN) {
-      return false;
-    }
-
-    return true;
   }
 
   public async registerEmployee(adminId: number, user: CreateEmployeeDto){
