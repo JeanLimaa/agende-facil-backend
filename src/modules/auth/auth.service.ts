@@ -67,7 +67,7 @@ export class AuthService {
 
     const user = await this.validateUser(body.email, body.password);
     
-    const payload: UserPayload = { id: user.id, email: user.email, role: user.role, companyId: user.companyId };
+    const payload: UserPayload = { userId: user.id, email: user.email, role: user.role, companyId: user.companyId };
 
     return {
       access_token: this.jwtService.sign(payload),
@@ -110,7 +110,12 @@ export class AuthService {
     // Update the user with the employeeId
     const userUpdated = await this.userService.update(newUser.id, { employeeId: employee.id });
 
-    const payload: UserPayload = { id: userUpdated.id, email: userUpdated.email, role: userUpdated.role, companyId: userUpdated.companyId };
+    const payload: UserPayload = { 
+      userId: userUpdated.id,
+      email: userUpdated.email, 
+      role: userUpdated.role, 
+      companyId: userUpdated.companyId 
+    };
 
     return {
       access_token: this.jwtService.sign(payload),
