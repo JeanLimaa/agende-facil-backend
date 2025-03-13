@@ -21,6 +21,14 @@ export class CategoryController {
     }
 
     @UseGuards(JwtAuthGuard)
+    @Get("/list-all")
+    public async listAll(
+        @GetUser("companyId") companyId: number,
+    ){
+        return await this.categoryService.listAllFromCompany(companyId);
+    }
+
+    @UseGuards(JwtAuthGuard)
     @Post()
     public async create(
         @GetUser("userId") userId: number,

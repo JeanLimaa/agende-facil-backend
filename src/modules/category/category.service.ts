@@ -96,4 +96,11 @@ export class CategoryService {
 
         return categories.map(({ companyId, ...category }) => category);
     }
+
+    public async listAllFromCompany(companyId: number): Promise<Omit<Category, 'companyId'>[]> {
+        const categories = await this.prisma.category.findMany({
+            where: { companyId }
+        });
+        return categories.map(({ companyId, ...category }) => category);
+    }
 }
