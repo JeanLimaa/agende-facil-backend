@@ -1,11 +1,21 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
 import { EmployeeService } from './employee.service';
+import { GetUser } from 'src/decorators/GetUser.decorator';
+import { JwtAuthGuard } from 'src/guards/jwt-auth.guard';
 
 @Controller('employee')
 export class EmployeeController {
   constructor(private readonly employeeService: EmployeeService) {}
 
-  @Get(':employeeId/available-times')
+  @UseGuards(JwtAuthGuard)
+  @Get('/list/all')
+  async listAll(
+    @GetUser("companyId") companyId: number,
+  ) {
+    return await this.employeeService.listByCompanyId(companyId);
+  }
+
+  @Get('/:employeeId/available-times')
   async getAvailableTimes(
     @Param('employeeId', ParseIntPipe) employeeId: number,
     @Query('date') date: string,
@@ -18,12 +28,12 @@ export class EmployeeController {
     return { availableTimes };
   }
 
-  @Get(':employeeId')
+  @Get('/:employeeId')
   async getEmployeeById(@Param('employeeId', ParseIntPipe) employeeId: number) {
     return await this.employeeService.getEmployeeById(employeeId);
   }
 
-  @Get('list/:companyId')
+  @Get('/list/:companyId')
   async listByCompanyId(@Param('companyId', ParseIntPipe) companyId: number) {
     return await this.employeeService.listByCompanyId(companyId);
   }

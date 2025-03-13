@@ -52,5 +52,13 @@ export class ServiceController {
         @Param('categoryId', ParseIntPipe) categoryId: number,
     ){
         return await this.serviceService.listByCategoryId(categoryId);
-    }   
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get("/list-all")
+    public async listAll(
+        @GetUser("companyId") companyId: number,
+    ){
+        return await this.serviceService.listByCompanyId(companyId);
+    }
 }
