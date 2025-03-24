@@ -89,9 +89,19 @@ export class AppointmentService {
     });
   }
 
-  async listAppointments() {
+  async listPendingAppointments() {
     return this.prisma.appointment.findMany({
       where: { status: Status.PENDING }, // Filtra por agendamentos pendentes
+    });
+  }
+
+  async findAllByCompany(companyId: number) {
+    return await this.prisma.appointment.findMany({
+      where: {
+        employee: {
+          companyId,
+        }
+      },
     });
   }
 

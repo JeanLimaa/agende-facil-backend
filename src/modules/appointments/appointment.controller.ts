@@ -6,14 +6,19 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto';
 export class AppointmentController {
   constructor(private readonly appointmentService: AppointmentService) {}
 
-  @Get()
+  @Get("/pending")
   findAll() {
-    return this.appointmentService.listAppointments();
+    return this.appointmentService.listPendingAppointments();
   }
 
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.appointmentService.findAppointmentById(id);
+  }
+
+  @Get('/company/:id')
+  findAllByCompany(@Param('id', ParseIntPipe) id: number) {
+    return this.appointmentService.findAllByCompany(id);
   }
 
   @Post()
