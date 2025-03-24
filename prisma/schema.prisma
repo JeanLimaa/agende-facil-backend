@@ -156,6 +156,10 @@ model Appointment {
   employeeId Int // Funcionário responsável
   employee   Employee @relation(fields: [employeeId], references: [id], name: "employee")
 
+  totalPrice Float // Preço total do agendamento
+
+  totalDuration Int  // Duração total do agendamento ( em minutos )
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt()
 
