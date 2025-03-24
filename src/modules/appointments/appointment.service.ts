@@ -24,14 +24,13 @@ export class AppointmentService {
       throw new BadRequestException('Funcionário já tem outro agendamento nesse horário.');
     }
 
-    // verifica se o agendamento está no horario de atendimento do funcionario
     const employee = await this.prisma.employee.findUnique({
       where: { id: data.employeeId },
     });
     
     if(!employee) throw new BadRequestException('Funcionário não encontrado.');
 
-    // Criar os horários de início e fim como objetos Date
+    // Criar os horários de início e fim do expediente do funcionario como objetos Date
     const appointmentDate = parseISO(data.date);
     const startHour = set(appointmentDate, {
       hours: parseInt(employee.startHour.split(':')[0], 10),
@@ -44,10 +43,19 @@ export class AppointmentService {
       minutes: parseInt(employee.endHour.split(':')[1], 10),
       seconds: 0,
     });
-
+    
+    // verifica se o agendamento está no horario de atendimento do funcionario
     if(isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
       throw new BadRequestException('Funcionário não atende nesse horário.');
     }
+
+    const servicos = await this.prisma.service.findMany({
+      where: {
+        id: {
+          in: data.serviceId,
+        },
+      },
+    });
 
     const appointment = await this.prisma.appointment.create({
       data: {
@@ -55,7 +63,8 @@ export class AppointmentService {
         clientId: data.clientId,
         guestClientId: data.guestClientId,
         employeeId: data.employeeId,
-        //serviceId: data.serviceId,
+        totalDuration: servicos.reduce((acc, servico) => acc + servico.duration, 0),
+        totalPrice: servicos.reduce((acc, servico) => acc + servico.price, 0),
         status: Status.PENDING, // Status inicial como PENDENTE
       },
     });

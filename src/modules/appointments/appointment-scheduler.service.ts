@@ -9,7 +9,7 @@ export class AppointmentScheduler {
   // Agendando uma tarefa para enviar lembretes de agendamento
   async scheduleAppointmentReminders() {
     cron.schedule('0 9 * * *', async () => {
-      const appointments = await this.appointmentService.listAppointments();
+      const appointments = await this.appointmentService.listPendingAppointments();
       
       // Iterando sobre os agendamentos para verificar se faltam 24 horas
       appointments.forEach((appointment) => {
