@@ -1,9 +1,15 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/Database.service';
 import { Appointment, Status } from '@prisma/client';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { isAfter, isBefore, parseISO, set } from 'date-fns';
-import { is } from 'date-fns/locale';
+
+const statusTranslation = {
+  [Status.PENDING]: 'Pendente',
+  [Status.CONFIRMED]: 'Confirmado',
+  [Status.CANCELLED]: 'Cancelado',
+  [Status.COMPLETED]: 'Concluído',
+};
 
 @Injectable()
 export class AppointmentService {
@@ -105,13 +111,18 @@ export class AppointmentService {
   }
 
   async findAllByCompany(companyId: number) {
-    return await this.prisma.appointment.findMany({
+    const appointments = await this.prisma.appointment.findMany({
       where: {
         employee: {
           companyId,
         }
       },
     });
+
+    return appointments.map((appointment) => ({
+      ...appointment,
+      status: statusTranslation[appointment.status],
+    }));
   }
 
   async findAppointmentById(id: number) {
@@ -123,6 +134,60 @@ export class AppointmentService {
   async deleteAppointment(id: number) {
     return this.prisma.appointment.delete({
       where: { id },
+    });
+  }
+
+  public async markAsCompleted(id: number, companyId: number) {
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id },
+    });
+
+    if (!appointment) {
+      throw new BadRequestException('Agendamento não encontrado.');
+    }
+
+    // Verifica se a solicitação é feita por alguém da empresa
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: appointment.employeeId },
+    });
+    if (!employee || employee.companyId !== companyId) {
+      throw new UnauthorizedException('Acesso não autorizado. Você não pode marcar este agendamento como atendido, pois não pertence à empresa.');
+    }
+
+    if (appointment.status !== Status.PENDING) {
+      throw new BadRequestException('Agendamento não pode ser marcado como atendido, pois não está pendente.');
+    }
+
+    return await this.prisma.appointment.update({
+      where: { id },
+      data: { status: Status.COMPLETED },
+    });
+  }
+
+  public async markAsCanceled(id: number, companyId: number) {
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id },
+    });
+
+    if (!appointment) {
+      throw new BadRequestException('Agendamento não encontrado.');
+    }
+
+    // Verifica se a solicitação é feita por alguém da empresa
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: appointment.employeeId },
+    });
+    if (!employee || employee.companyId !== companyId) {
+      throw new UnauthorizedException('Acesso não autorizado. Você não pode marcar este agendamento como atendido, pois não pertence à empresa.');
+    }
+
+    if (appointment.status !== Status.PENDING) {
+      throw new BadRequestException('Agendamento não pode ser cancelado, pois não está pendente.');
+    }
+
+    return await this.prisma.appointment.update({
+      where: { id },
+      data: { status: Status.CANCELLED },
     });
   }
 }
