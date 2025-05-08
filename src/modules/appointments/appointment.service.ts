@@ -15,8 +15,7 @@ const statusTranslation = {
 export class AppointmentService {
   constructor(private readonly prisma: DatabaseService) {}
 
-  // Criar agendamento de serviço
-  async createAppointment(data: CreateAppointmentDto): Promise<Appointment> {
+  public async createAppointment(data: CreateAppointmentDto): Promise<Appointment> {
     // Verifica a disponibilidade do funcionário e do serviço no horário desejado
     const existingAppointment = await this.prisma.appointment.findFirst({
       where: {
@@ -89,7 +88,7 @@ export class AppointmentService {
     return appointment;
   }
 
-  async updateAppointmentStatus(id: number, status: Status) {
+  public async updateAppointmentStatus(id: number, status: Status) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
     });
@@ -104,13 +103,13 @@ export class AppointmentService {
     });
   }
 
-  async listPendingAppointments() {
+  public async listPendingAppointments() {
     return this.prisma.appointment.findMany({
       where: { status: Status.PENDING }, // Filtra por agendamentos pendentes
     });
   }
 
-  async findAllByCompany(companyId: number) {
+  public async findAllByCompany(companyId: number) {
     const appointments = await this.prisma.appointment.findMany({
       where: {
         employee: {
@@ -125,13 +124,19 @@ export class AppointmentService {
     }));
   }
 
-  async findAppointmentById(id: number) {
+  public async findAppointmentById(id: number) {
     return this.prisma.appointment.findUnique({
       where: { id },
+      include: {
+        client: true,
+        guestClient: true,
+        employee: true,
+        appointmentServices: true
+      }
     });
   }
 
-  async deleteAppointment(id: number) {
+  public async deleteAppointment(id: number) {
     return this.prisma.appointment.delete({
       where: { id },
     });
