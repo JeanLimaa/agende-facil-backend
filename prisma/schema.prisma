@@ -35,8 +35,13 @@ model User {
 model GuestClient {
   id        Int      @id @default(autoincrement())
   name      String
-  email     String   @unique
   phone     String
+  
+  companyId Int // Relacionamento com a empresa
+  company  Company @relation(fields: [companyId], references: [id])
+
+  email     String? @unique // Email do cliente convidado (opcional)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt()
 
@@ -65,6 +70,8 @@ model Company {
   users       User[] // Usuários da empresa
 
   category    Category[] // Categorias de serviços
+
+  guestClients GuestClient[]
 }
 
 model Employee {
