@@ -3,17 +3,19 @@ import { AppointmentService } from './appointment.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { JwtAuthGuard } from 'src/guards/jwt-auth.guard';
 import { GetUser } from 'src/decorators/GetUser.decorator';
+import { SkipAuth } from 'src/decorators/SkipAuth.decorator';
 
+@UseGuards(JwtAuthGuard)
 @Controller('appointment')
 export class AppointmentController {
   constructor(private readonly appointmentService: AppointmentService) {}
 
+  @SkipAuth()
   @Get("/pending")
   findAll() {
     return this.appointmentService.listPendingAppointments();
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch("complete/:id")
   public async markAsCompleted(
     @Param('id', ParseIntPipe) id: number,
@@ -22,7 +24,6 @@ export class AppointmentController {
     return await this.appointmentService.markAsCompleted(id, companyId);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch("cancel/:id")
   public async markAsCanceled(
     @Param('id', ParseIntPipe) id: number,
@@ -31,7 +32,6 @@ export class AppointmentController {
     return await this.appointmentService.markAsCanceled(id, companyId);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('/company')
   findAllByCompany(
     @GetUser("companyId", ParseIntPipe) companyId: number
@@ -44,6 +44,7 @@ export class AppointmentController {
     return this.appointmentService.findAppointmentById(id);
   }
 
+  @SkipAuth()
   @Post()
   create(
     @Body() createAppointmentDto: CreateAppointmentDto,
@@ -53,7 +54,6 @@ export class AppointmentController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.appointmentService.deleteAppointment(id);
