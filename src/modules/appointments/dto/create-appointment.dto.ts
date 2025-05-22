@@ -6,12 +6,12 @@ export class CreateAppointmentDto {
     @IsDateTime({message: "Data do agendamento inválida. Precisa ser DateTime."})
     date: string;
 
-    clientId?: number;
-
-    guestClientId?: number;
+    @IsNumber()
+    @IsNotEmpty({message: "Cliente não informado."})
+    clientId: number;
 
     //@IsNumber()
-    @IsNotEmpty({message: "ID do empregado não informado."})
+    @IsNotEmpty({message: "Empregado não informado."})
     employeeId: number;
     
     //@IsNumber()

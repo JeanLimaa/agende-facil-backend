@@ -1,7 +1,7 @@
 import { IsNotEmpty, IsPhoneNumber, IsString } from "class-validator";
 
 
-export class CreateGuestClientDto {
+export class CreateClientDto {
     @IsPhoneNumber("BR", { message: "Número de telefone inválido" })
     phone: string;
 

@@ -10,7 +10,7 @@ import { CategoryModule } from './modules/category/category.module';
 import { EmployeeServicesModule } from './modules/employee-services/employee-services.module';
 import { EmployeeModule } from './modules/employee/employee.module';
 import { AppointmentModule } from './modules/appointments/appointment.module';
-import { GuestClientsModule } from './modules/guest-clients/guest-clients.module';
+import { ClientsModule } from './modules/clients/clients.module';
 
 @Module({
   imports: [
@@ -23,7 +23,7 @@ import { GuestClientsModule } from './modules/guest-clients/guest-clients.module
     EmployeeServicesModule,
     EmployeeModule,
     AppointmentModule,
-    GuestClientsModule
+    ClientsModule
   ],
   controllers: [AppController],
   providers: [AppService],

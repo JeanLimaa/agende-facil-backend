@@ -91,7 +91,7 @@ async function main() {
     });
 
     // Cria um cliente convidado inicial associado à empresa
-    const guestClient = await prisma.guestClient.create({
+    const client = await prisma.client.create({
         data: {
             name: 'Cliente Convidado Inicial',
             phone: '71984043767',
@@ -106,7 +106,7 @@ async function main() {
                 date: new Date(),
                 status: 'PENDING',
                 employeeId: employee.id,
-                guestClientId: guestClient.id,
+                clientId: client.id,
                 totalDuration: 60,
                 totalPrice: 100.0,
             },
@@ -114,7 +114,7 @@ async function main() {
                 date: new Date(new Date().setDate(new Date().getDate() - 1)),
                 status: 'CONFIRMED',
                 employeeId: employee.id,
-                guestClientId: guestClient.id,
+                clientId: client.id,
                 totalDuration: 120,
                 totalPrice: 200.0,
             },
@@ -122,7 +122,7 @@ async function main() {
                 date: new Date(new Date().setDate(new Date().getDate() - 2)),
                 status: 'CANCELLED',
                 employeeId: employee.id,
-                guestClientId: guestClient.id,
+                clientId: client.id,
                 totalDuration: 90,
                 totalPrice: 150.0,
             },
@@ -130,7 +130,7 @@ async function main() {
                 date: new Date(new Date().setDate(new Date().getDate() - 3)),
                 status: 'COMPLETED',
                 employeeId: employee.id,
-                guestClientId: guestClient.id,
+                clientId: client.id,
                 totalDuration: 30,
                 totalPrice: 50.0,
             },
@@ -138,7 +138,7 @@ async function main() {
                 date: new Date(new Date().setDate(new Date().getDate() - 4)),
                 status: 'PENDING',
                 employeeId: employee.id,
-                guestClientId: guestClient.id,
+                clientId: client.id,
                 totalDuration: 45,
                 totalPrice: 75.0,
             },
@@ -149,7 +149,7 @@ async function main() {
     const createdAppointments = await prisma.appointment.findMany({
         where: {
             employeeId: employee.id,
-            guestClientId: guestClient.id,
+            clientId: client.id,
         },
     });
 
