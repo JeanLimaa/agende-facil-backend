@@ -1,6 +1,6 @@
 import { Controller, Post, UseGuards } from "@nestjs/common";
-import { GetUser } from "src/decorators/GetUser.decorator";
-import { JwtAuthGuard } from "src/guards/jwt-auth.guard";
+import { GetUser } from "src/common/decorators/GetUser.decorator";
+import { JwtAuthGuard } from "src/common/guards/jwt-auth.guard";
 import { CompanyService } from "../company/company.service";
 import { SubscriptionService } from "./subscription.service";
 

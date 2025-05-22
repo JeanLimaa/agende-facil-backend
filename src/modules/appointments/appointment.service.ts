@@ -1,8 +1,9 @@
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/Database.service';
-import { Appointment, Status } from '@prisma/client';
+import { Appointment, Role, Status } from '@prisma/client';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { isAfter, isBefore, parseISO, set } from 'date-fns';
+import { sumByProp } from 'src/common/helpers/sumTotal.helper';
 
 const statusTranslation = {
   [Status.PENDING]: 'Pendente',
@@ -15,7 +16,7 @@ const statusTranslation = {
 export class AppointmentService {
   constructor(private readonly prisma: DatabaseService) {}
 
-  public async createAppointment(data: CreateAppointmentDto): Promise<Appointment> {
+  public async createAppointment(data: CreateAppointmentDto, role: Role): Promise<Appointment> {
     // Verifica a disponibilidade do funcionário e do serviço no horário desejado
     const existingAppointment = await this.prisma.appointment.findFirst({
       where: {
@@ -34,24 +35,26 @@ export class AppointmentService {
     });
     
     if(!employee) throw new BadRequestException('Funcionário não encontrado.');
-
-    // Criar os horários de início e fim do expediente do funcionario como objetos Date
-    const appointmentDate = parseISO(data.date);
-    const startHour = set(appointmentDate, {
-      hours: parseInt(employee.startHour.split(':')[0], 10),
-      minutes: parseInt(employee.startHour.split(':')[1], 10),
-      seconds: 0,
-    });
-
-    const endHour = set(appointmentDate, {
-      hours: parseInt(employee.endHour.split(':')[0], 10),
-      minutes: parseInt(employee.endHour.split(':')[1], 10),
-      seconds: 0,
-    });
     
-    // verifica se o agendamento está no horario de atendimento do funcionario
-    if(isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
-      throw new BadRequestException('Funcionário não atende nesse horário.');
+    // Criar os horários de início e fim do expediente do funcionario como objetos Date
+    if(employee.startHour && employee.endHour) {
+      const appointmentDate = parseISO(data.date);
+      const startHour = set(appointmentDate, {
+        hours: parseInt(employee.startHour.split(':')[0], 10),
+        minutes: parseInt(employee.startHour.split(':')[1], 10),
+        seconds: 0,
+      });
+
+      const endHour = set(appointmentDate, {
+        hours: parseInt(employee.endHour.split(':')[0], 10),
+        minutes: parseInt(employee.endHour.split(':')[1], 10),
+        seconds: 0,
+      });
+      
+      // verifica se o agendamento está no horario de atendimento do funcionario
+      if(isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
+        throw new BadRequestException('Funcionário não atende nesse horário.');
+      }
     }
 
     const servicos = await this.prisma.service.findMany({
@@ -62,16 +65,22 @@ export class AppointmentService {
       },
     });
 
+    const subTotalPrice = sumByProp(servicos, 'price');
+    const discountAllowed = (role === Role.ADMIN || role === Role.EMPLOYEE) ? data.discount : 0;
+
+    const appointmentData = {
+      date: data.date,
+      clientId: data.clientId,
+      employeeId: data.employeeId,
+      totalDuration: sumByProp(servicos, 'duration'),
+      subTotalPrice,
+      discount: discountAllowed,
+      totalPrice: subTotalPrice - discountAllowed,
+      status: Status.PENDING,
+    };
+
     const appointment = await this.prisma.appointment.create({
-      data: {
-        date: data.date,
-        clientId: data.clientId,
-        guestClientId: data.guestClientId,
-        employeeId: data.employeeId,
-        totalDuration: servicos.reduce((acc, servico) => acc + servico.duration, 0),
-        totalPrice: servicos.reduce((acc, servico) => acc + servico.price, 0),
-        status: Status.PENDING, // Status inicial como PENDENTE
-      },
+      data: appointmentData,
     });
 
     const appointmentServices = await this.prisma.appointmentService.createMany({
@@ -116,11 +125,15 @@ export class AppointmentService {
           companyId,
         }
       },
+      include: {
+        client: true
+      }
     });
 
     return appointments.map((appointment) => ({
       ...appointment,
       status: statusTranslation[appointment.status],
+      clientName: appointment.client.name
     }));
   }
 
@@ -129,7 +142,6 @@ export class AppointmentService {
       where: { id },
       include: {
         client: true,
-        guestClient: true,
         employee: true,
         appointmentServices: true
       }

@@ -1,5 +1,6 @@
-import { IsString, IsNotEmpty, IsNumber, IsDateString, IsArray } from 'class-validator';
-import { IsDateTime } from 'src/decorators/ClassValidator.decorator';
+import { Transform } from 'class-transformer';
+import { IsString, IsNotEmpty, IsNumber, IsDateString, IsArray, IsOptional } from 'class-validator';
+import { IsDateTime } from 'src/common/decorators/ClassValidator.decorator';
 
 export class CreateAppointmentDto {
     //@IsNotEmpty()
@@ -9,6 +10,11 @@ export class CreateAppointmentDto {
     @IsNumber()
     @IsNotEmpty({message: "Cliente não informado."})
     clientId: number;
+
+    @IsOptional()
+    @Transform(({ value }) => value || 0)
+    @IsNumber()
+    discount: number;
 
     //@IsNumber()
     @IsNotEmpty({message: "Empregado não informado."})

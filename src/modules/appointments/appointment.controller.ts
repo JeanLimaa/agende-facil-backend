@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { AppointmentService } from './appointment.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
-import { JwtAuthGuard } from 'src/guards/jwt-auth.guard';
-import { GetUser } from 'src/decorators/GetUser.decorator';
-import { SkipAuth } from 'src/decorators/SkipAuth.decorator';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { GetUser } from 'src/common/decorators/GetUser.decorator';
+import { SkipAuth } from 'src/common/decorators/SkipAuth.decorator';
+import { Role } from '@prisma/client';
 
 @UseGuards(JwtAuthGuard)
 @Controller('appointment')
@@ -48,9 +49,11 @@ export class AppointmentController {
   @Post()
   create(
     @Body() createAppointmentDto: CreateAppointmentDto,
+    @GetUser("role", ParseIntPipe) role: Role | undefined
   ) {
     return this.appointmentService.createAppointment(
-      createAppointmentDto
+      createAppointmentDto,
+      role
     );
   }
 

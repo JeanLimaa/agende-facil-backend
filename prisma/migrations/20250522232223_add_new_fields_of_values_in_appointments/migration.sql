@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `appointment` ADD COLUMN `discount` DOUBLE NOT NULL DEFAULT 0;,
+    ADD COLUMN `subTotalPrice` DOUBLE NOT NULL;

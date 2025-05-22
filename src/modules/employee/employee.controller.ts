@@ -1,7 +1,7 @@
 import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
 import { EmployeeService } from './employee.service';
-import { GetUser } from 'src/decorators/GetUser.decorator';
-import { JwtAuthGuard } from 'src/guards/jwt-auth.guard';
+import { GetUser } from 'src/common/decorators/GetUser.decorator';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
 @Controller('employee')
 export class EmployeeController {

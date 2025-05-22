@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { CategoryService } from './category.service';
-import { GetUser } from 'src/decorators/GetUser.decorator';
+import { GetUser } from 'src/common/decorators/GetUser.decorator';
 import { CreateCategoryDTO } from './dto/create-category.dto';
-import { JwtAuthGuard } from 'src/guards/jwt-auth.guard';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CompanyService } from '../company/company.service';
 import { ParseIntPipe } from '@nestjs/common';
 

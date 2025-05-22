@@ -1,11 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ServiceService } from './service.service';
 import { CompanyService } from '../company/company.service';
-import { JwtAuthGuard } from 'src/guards/jwt-auth.guard';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CreateServiceDTO } from './dto/create-service.dto';
 import { UpdateServiceDTO } from './dto/update-service.dto';
 import { ParseIntPipe } from '@nestjs/common';
-import { GetUser } from 'src/decorators/GetUser.decorator';
+import { GetUser } from 'src/common/decorators/GetUser.decorator';
 
 @Controller('service')
 export class ServiceController {

@@ -109,6 +109,7 @@ async function main() {
                 clientId: client.id,
                 totalDuration: 60,
                 totalPrice: 100.0,
+                subTotalPrice: 100.0,
             },
             {
                 date: new Date(new Date().setDate(new Date().getDate() - 1)),
@@ -117,6 +118,7 @@ async function main() {
                 clientId: client.id,
                 totalDuration: 120,
                 totalPrice: 200.0,
+                subTotalPrice: 200.0,
             },
             {
                 date: new Date(new Date().setDate(new Date().getDate() - 2)),
@@ -125,6 +127,7 @@ async function main() {
                 clientId: client.id,
                 totalDuration: 90,
                 totalPrice: 150.0,
+                subTotalPrice: 150.0,
             },
             {
                 date: new Date(new Date().setDate(new Date().getDate() - 3)),
@@ -133,6 +136,7 @@ async function main() {
                 clientId: client.id,
                 totalDuration: 30,
                 totalPrice: 50.0,
+                subTotalPrice: 50.0,
             },
             {
                 date: new Date(new Date().setDate(new Date().getDate() - 4)),
@@ -141,6 +145,7 @@ async function main() {
                 clientId: client.id,
                 totalDuration: 45,
                 totalPrice: 75.0,
+                subTotalPrice: 75.0,
             },
         ],
     });
