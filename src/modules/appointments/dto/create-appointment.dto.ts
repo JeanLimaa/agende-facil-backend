@@ -11,7 +11,7 @@ export class CreateAppointmentDto {
     @IsNotEmpty({message: "Cliente não informado."})
     clientId: number;
 
-    @IsNumber()
+    @IsNumber({}, {message: "Valor de desconto inválido. Precisa ser um número."})
     discount: number;
 
     //@IsNumber()
