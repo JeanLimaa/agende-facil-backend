@@ -1,15 +1,19 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { AppointmentService } from './appointment.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/GetUser.decorator';
 import { SkipAuth } from 'src/common/decorators/SkipAuth.decorator';
 import { Role } from '@prisma/client';
+import { UserPayload } from '../auth/interfaces/UserPayload.interface';
+import { DatabaseService } from 'src/services/Database.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('appointment')
 export class AppointmentController {
-  constructor(private readonly appointmentService: AppointmentService) {}
+  constructor(
+    private readonly appointmentService: AppointmentService,
+  ) {}
 
   @SkipAuth()
   @Get("/pending")
@@ -45,16 +49,25 @@ export class AppointmentController {
     return this.appointmentService.findAppointmentById(id);
   }
 
-  @SkipAuth()
+  //@SkipAuth()
   @Post()
   create(
     @Body() createAppointmentDto: CreateAppointmentDto,
-    @GetUser("role", ParseIntPipe) role: Role | undefined
+    @GetUser("role") role: Role
   ) {
     return this.appointmentService.createAppointment(
       createAppointmentDto,
-      role
+      role,
     );
+  }
+
+  @Put(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateAppointmentDto: CreateAppointmentDto,
+    @GetUser("role") role: Role,
+  ) {
+    return this.appointmentService.updateAppointment(id, updateAppointmentDto, role);
   }
 
   @Delete(':id')

@@ -17,84 +17,23 @@ export class AppointmentService {
   constructor(private readonly prisma: DatabaseService) {}
 
   public async createAppointment(data: CreateAppointmentDto, role: Role): Promise<Appointment> {
-    // Verifica a disponibilidade do funcionário e do serviço no horário desejado
-    const existingAppointment = await this.prisma.appointment.findFirst({
-      where: {
-        employeeId: data.employeeId,
-        date: data.date,
-        status: Status.PENDING, // Garantir que o funcionário não tenha outro agendamento
-      },
-    });
-
-    if (existingAppointment) {
-      throw new BadRequestException('Funcionário já tem outro agendamento nesse horário.');
-    }
-
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: data.employeeId },
-    });
-    
-    if(!employee) throw new BadRequestException('Funcionário não encontrado.');
-    
-    // Criar os horários de início e fim do expediente do funcionario como objetos Date
-    if(employee.startHour && employee.endHour) {
-      const appointmentDate = parseISO(data.date);
-      const startHour = set(appointmentDate, {
-        hours: parseInt(employee.startHour.split(':')[0], 10),
-        minutes: parseInt(employee.startHour.split(':')[1], 10),
-        seconds: 0,
+    return await this.prisma.$transaction(async (prismaTransaction) => {
+      const appointmentData = await this.prepareAppointmentData(data, role);
+  
+      const appointment = await prismaTransaction.appointment.create({
+        data: appointmentData,
       });
-
-      const endHour = set(appointmentDate, {
-        hours: parseInt(employee.endHour.split(':')[0], 10),
-        minutes: parseInt(employee.endHour.split(':')[1], 10),
-        seconds: 0,
+  
+      // cria os relacionamentos com os serviços
+      await prismaTransaction.appointmentService.createMany({
+        data: data.serviceId.map((serviceId) => ({
+          appointmentId: appointment.id,
+          serviceId,
+        })),
       });
-      
-      // verifica se o agendamento está no horario de atendimento do funcionario
-      if(isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
-        throw new BadRequestException('Funcionário não atende nesse horário.');
-      }
-    }
-
-    const servicos = await this.prisma.service.findMany({
-      where: {
-        id: {
-          in: data.serviceId,
-        },
-      },
+  
+      return appointment;
     });
-
-    const subTotalPrice = sumByProp(servicos, 'price');
-    const discountAllowed = (role === Role.ADMIN || role === Role.EMPLOYEE) ? data.discount : 0;
-
-    const appointmentData = {
-      date: data.date,
-      clientId: data.clientId,
-      employeeId: data.employeeId,
-      totalDuration: sumByProp(servicos, 'duration'),
-      subTotalPrice,
-      discount: discountAllowed,
-      totalPrice: subTotalPrice - discountAllowed,
-      status: Status.PENDING,
-    };
-
-    const appointment = await this.prisma.appointment.create({
-      data: appointmentData,
-    });
-
-    const appointmentServices = await this.prisma.appointmentService.createMany({
-      data: data.serviceId.map((serviceId) => ({
-        appointmentId: appointment.id,
-        serviceId,
-      })),
-    });
-
-    if(!appointmentServices) {
-      throw new BadRequestException('Erro ao criar agendamento.');
-    };
-
-    return appointment;
   }
 
   public async updateAppointmentStatus(id: number, status: Status) {
@@ -206,5 +145,100 @@ export class AppointmentService {
       where: { id },
       data: { status: Status.CANCELLED },
     });
+  }
+
+  public async updateAppointment(id: number, data: CreateAppointmentDto, role: Role) {
+    return await this.prisma.$transaction(async (prismaTransaction) => {
+      const appointment = await prismaTransaction.appointment.findUnique({
+        where: { id },
+      });
+  
+      if (!appointment) {
+        throw new BadRequestException('Agendamento não encontrado.');
+      }
+  
+      const appointmentData = await this.prepareAppointmentData(data, role);
+  
+      const updated = await prismaTransaction.appointment.update({
+        where: { id },
+        data: {
+          date: appointmentData.date,
+          totalDuration: appointmentData.totalDuration,
+          subTotalPrice: appointmentData.subTotalPrice,
+          discount: appointmentData.discount,
+          totalPrice: appointmentData.totalPrice,
+          status: appointmentData.status,
+        },
+      });
+  
+      // Atualiza os serviços associados
+      await prismaTransaction.appointmentService.deleteMany({ where: { appointmentId: id } });
+  
+      await prismaTransaction.appointmentService.createMany({
+        data: data.serviceId.map((serviceId) => ({
+          appointmentId: id,
+          serviceId,
+        })),
+      });
+  
+      return updated;
+    });
+  }
+
+  private async prepareAppointmentData(data: CreateAppointmentDto, role: Role) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: data.employeeId },
+    });
+
+    if (!employee) {
+      throw new BadRequestException('Funcionário não encontrado.');
+    }
+
+    if (employee.startHour && employee.endHour) {
+      const appointmentDate = parseISO(data.date);
+      const startHour = set(appointmentDate, {
+        hours: parseInt(employee.startHour.split(':')[0], 10),
+        minutes: parseInt(employee.startHour.split(':')[1], 10),
+        seconds: 0,
+      });
+
+      const endHour = set(appointmentDate, {
+        hours: parseInt(employee.endHour.split(':')[0], 10),
+        minutes: parseInt(employee.endHour.split(':')[1], 10),
+        seconds: 0,
+      });
+
+      if (isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
+        throw new BadRequestException('Funcionário não atende nesse horário.');
+      }
+    }
+
+    const servicos = await this.prisma.service.findMany({
+      where: {
+        id: { in: data.serviceId },
+      },
+    });
+
+    const subTotalPrice = sumByProp(servicos, 'price');
+    const discount = (role === Role.ADMIN || role === Role.EMPLOYEE) ? data.discount : 0;
+
+    if (discount > subTotalPrice) {
+      throw new BadRequestException('Desconto não pode ser maior que o valor total.');
+    }
+
+    if (discount < 0) {
+      throw new BadRequestException('Desconto não pode ser negativo.');
+    }
+
+    return {
+      date: data.date,
+      clientId: data.clientId,
+      employeeId: data.employeeId,
+      totalDuration: sumByProp(servicos, 'duration'),
+      subTotalPrice,
+      discount,
+      totalPrice: subTotalPrice - discount,
+      status: Status.PENDING,
+    };
   }
 }

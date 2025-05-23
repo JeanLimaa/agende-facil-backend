@@ -11,8 +11,6 @@ export class CreateAppointmentDto {
     @IsNotEmpty({message: "Cliente não informado."})
     clientId: number;
 
-    @IsOptional()
-    @Transform(({ value }) => value || 0)
     @IsNumber()
     discount: number;
 
