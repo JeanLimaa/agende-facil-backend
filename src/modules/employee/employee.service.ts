@@ -23,12 +23,6 @@ export class EmployeeService {
         });
     }
 
-   /*  public async listByCategoryId(categoryId: number, companyId: number) {
-        return await this.prisma.employee.findMany({
-            where: { categoryId }
-        });
-    }; */
-
     // Verificar disponibilidade do funcionário para determinado serviço e data
     async getAvailableTimes(employeeId: number, date: string) {
         const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
@@ -41,8 +35,8 @@ export class EmployeeService {
         const today = startOfDay(new Date());
         if(isBefore(parsedDate, today)) throw new BadRequestException('A data não pode ser anterior a hoje.');
 
-        const employeeStartHour = this.parseTimeToMinutes(employee.startHour);  // Ex: Converte "09:00" (HH:mm) para minutos
-        const employeeEndHour = this.parseTimeToMinutes(employee.endHour);
+        const employeeStartHour = employee.startHour ? this.parseTimeToMinutes(employee.startHour) : 0;  // Ex: Converte "09:00" (HH:mm) para minutos
+        const employeeEndHour = employee.endHour ? this.parseTimeToMinutes(employee.endHour) : 1 * 60 * 24 ;
         const interval = employee.serviceInterval;
 
         const dayStart = startOfDay(parsedDate);
@@ -97,8 +91,7 @@ export class EmployeeService {
         return availableTimes;
     }
     
-    private parseTimeToMinutes(time: string | null): number {
-        if (!time) throw new BadRequestException('Horário inválido');
+    private parseTimeToMinutes(time: string): number {
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
     }
