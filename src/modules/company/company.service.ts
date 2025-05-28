@@ -109,7 +109,6 @@ export class CompanyService {
     }
 
     public async getCompanyByLinkName(linkName: string) {
-        console.log(linkName);
         const company = await this.prisma.company.findFirst({
             where: {
                 link: linkName

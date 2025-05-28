@@ -41,11 +41,11 @@ export class EmployeeServicesService {
                     },
                 },
             });
-            console.log(existingRelation);
+            
             if (existingRelation) {
                 throw new ConflictException('Relação entre funcionário e serviço já existe');
             }
-            console.log(pair)
+            
             return await this.prisma.employeeCategorys.create({
                 data: {
                     employeeId: employeeId,

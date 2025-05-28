@@ -22,7 +22,6 @@ export class ClientsController {
   findAll(
     @GetUser('companyId') companyId: number,
   ) {
-    console.log('companyId', companyId);
     return this.clientsService.findAll(companyId);
   }
 }
