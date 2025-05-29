@@ -139,4 +139,27 @@ export class AuthService {
 
     return employee;
   }
+
+  public async getMe(userId: number): Promise<GetMePayload> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        employee: true,
+        company: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuário não encontrado');
+    }
+
+    const payload: GetMePayload = {
+      email: user.email,
+      name: user.employee.name,
+      phone: user.employee.phone,
+      companyName: user.company.name,
+    };
+
+    return payload;
+  }
 }
