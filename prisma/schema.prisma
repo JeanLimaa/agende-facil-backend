@@ -169,6 +169,8 @@ model Appointment {
 
   payment Payment? // Pagamento associado
   appointmentServices AppointmentService[] // Serviços agendados
+
+  isBlock Boolean @default(false) // Indica se é bloqueio de agenda
 }
 
 
