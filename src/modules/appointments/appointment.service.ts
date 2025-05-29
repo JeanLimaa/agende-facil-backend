@@ -2,8 +2,10 @@ import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/
 import { DatabaseService } from 'src/services/Database.service';
 import { Appointment, Role, Status } from '@prisma/client';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
-import { isAfter, isBefore, parseISO, set } from 'date-fns';
+import { BlockAppointmentDto } from './dto/block-appointment.dto';
+import { isAfter, isBefore, parseISO, set, differenceInMinutes } from 'date-fns';
 import { sumByProp } from 'src/common/helpers/sumTotal.helper';
+import { EmployeeService } from '../employee/employee.service';
 
 const statusTranslation = {
   [Status.PENDING]: 'Pendente',
@@ -14,7 +16,10 @@ const statusTranslation = {
 
 @Injectable()
 export class AppointmentService {
-  constructor(private readonly prisma: DatabaseService) {}
+  constructor(
+    private readonly prisma: DatabaseService,
+    private readonly employeeService: EmployeeService,
+  ) {}
 
   public async createAppointment(data: CreateAppointmentDto, role: Role): Promise<Appointment> {
     return await this.prisma.$transaction(async (prismaTransaction) => {
@@ -36,6 +41,68 @@ export class AppointmentService {
     });
   }
 
+  public async createBlock(dto: BlockAppointmentDto): Promise<Appointment> {
+    // Verifica conflito de horário para o funcionário em todo o intervalo
+    //await this.checkForBlockConflicts(dto.startDate, dto.endDate, dto.employeeId);
+
+    const start = parseISO(dto.startDate);
+    const end = parseISO(dto.endDate);
+    const duration = differenceInMinutes(end, start);
+    
+    return this.prisma.appointment.create({
+      data: {
+        date: start,
+        employeeId: dto.employeeId,
+        clientId: 1, // Cliente fixo para bloqueio
+        isBlock: true,
+        status: 'PENDING',
+        subTotalPrice: 0,
+        discount: 0,
+        totalPrice: 0,
+        totalDuration: duration,
+      },
+    });
+  }
+
+/*   private async checkForBlockConflicts(startDate: string, endDate: string, employeeId: number) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    const conflicting = await this.prisma.appointment.findFirst({
+      where: {
+        employeeId,
+        // Conflito se houver qualquer agendamento/bloqueio que inicie ou termine dentro do intervalo
+        OR: [
+          {
+            date: {
+              gte: start,
+              lt: end,
+            },
+          },
+          {
+            AND: [
+              {
+                date: {
+                  lte: start,
+                },
+              },
+              {
+                // appointment termina depois do início do bloqueio
+                totalDuration: {
+                  gt: 0,
+                },
+              },
+            ],
+          },
+        ],
+        status: { in: ['PENDING', 'CONFIRMED'] },
+      },
+    });
+    if (conflicting) {
+      throw new BadRequestException('Já existe um agendamento ou bloqueio para este intervalo.');
+    }
+  } */
+
   public async updateAppointmentStatus(id: number, status: Status) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -53,7 +120,7 @@ export class AppointmentService {
 
   public async listPendingAppointments() {
     return this.prisma.appointment.findMany({
-      where: { status: Status.PENDING }, // Filtra por agendamentos pendentes
+      where: { status: Status.PENDING, isBlock: false }, // Filtra por agendamentos pendentes
     });
   }
 
@@ -62,7 +129,8 @@ export class AppointmentService {
       where: {
         employee: {
           companyId,
-        }
+        },
+        isBlock: false,
       },
       include: {
         client: true
@@ -78,12 +146,12 @@ export class AppointmentService {
 
   public async findAppointmentById(id: number) {
     return this.prisma.appointment.findUnique({
-      where: { id },
+      where: { id, isBlock: false },
       include: {
         client: true,
         employee: true,
         appointmentServices: true
-      }
+      },
     });
   }
 
@@ -211,6 +279,17 @@ export class AppointmentService {
       if (isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
         throw new BadRequestException('Funcionário não atende nesse horário.');
       }
+    }
+
+    const isAvailable = await this.employeeService.isTimeAvailable(
+      data.employeeId,
+      parseISO(data.date),
+      employee.serviceInterval,
+      true
+    ); 
+
+    if (!isAvailable) {
+      throw new BadRequestException('Funcionário não está disponível nesse horário.');
     }
 
     const servicos = await this.prisma.service.findMany({

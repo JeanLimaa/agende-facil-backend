@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { AppointmentService } from './appointment.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { BlockAppointmentDto } from './dto/block-appointment.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/GetUser.decorator';
 import { SkipAuth } from 'src/common/decorators/SkipAuth.decorator';
@@ -59,6 +60,11 @@ export class AppointmentController {
       createAppointmentDto,
       role,
     );
+  }
+
+  @Post('block')
+  createBlock(@Body() dto: BlockAppointmentDto) {
+    return this.appointmentService.createBlock(dto);
   }
 
   @Put(':id')
