@@ -3,7 +3,7 @@ import { Status } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
 import { format, isBefore, isAfter, addMinutes, startOfDay, endOfDay, parseISO, isEqual } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { is, ptBR } from 'date-fns/locale';
 
 @Injectable()
 export class EmployeeService {
@@ -24,7 +24,7 @@ export class EmployeeService {
     }
 
     // Verificar disponibilidade do funcionário para determinado serviço e data
-    async getAvailableTimes(employeeId: number, date: string) {
+    public async getAvailableTimes(employeeId: number, date: string) {
         const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
         if (!employee) throw new BadRequestException('Funcionário não encontrado');
 
@@ -36,51 +36,17 @@ export class EmployeeService {
         if(isBefore(parsedDate, today)) throw new BadRequestException('A data não pode ser anterior a hoje.');
 
         const employeeStartHour = employee.startHour ? this.parseTimeToMinutes(employee.startHour) : 0;  // Ex: Converte "09:00" (HH:mm) para minutos
-        const employeeEndHour = employee.endHour ? this.parseTimeToMinutes(employee.endHour) : 1 * 60 * 24 ;
+        const employeeEndHour = employee.endHour ? this.parseTimeToMinutes(employee.endHour) : 1 * 60 * 23 ;
         const interval = employee.serviceInterval;
 
         const dayStart = startOfDay(parsedDate);
-        const dayEnd = endOfDay(parsedDate);
-
-        const appointments = await this.prisma.appointment.findMany({
-            where: {
-                employeeId,
-                date: {
-                    gte: dayStart,
-                    lte: dayEnd,
-                },
-                status: Status.PENDING,
-            },
-            include: { appointmentServices: true },
-        });
-
-        const serviceIds = appointments
-        .map(appointment => appointment.appointmentServices.map(as => as.serviceId))
-        .flat();
-
-        const services = await this.prisma.service.findMany({
-            where: { id: { in: serviceIds } },
-        });
             
         const availableTimes: string[] = [];
         
-
         for (let minutes = employeeStartHour; minutes <= employeeEndHour; minutes += interval) {
             const proposedTime = addMinutes(dayStart, minutes);
             
-            const isAvailable = !appointments.some(appointment => {
-                const appointmentStart = new Date(appointment.date);
-
-                const appointmentDuration = appointment.appointmentServices.reduce((acc, as) => {
-                    const service = services.find(s => s.id === as.serviceId);
-                    return acc + (service?.duration || interval);
-                }, 0);
-                
-                const appointmentEnd = addMinutes(appointmentStart, appointmentDuration);
-
-                const isIntersecting = isBefore(proposedTime, appointmentEnd) && isAfter(proposedTime, appointmentStart);
-                return isEqual(proposedTime, appointmentStart) || isIntersecting;
-            });
+            const isAvailable = await this.isTimeAvailable(employeeId, proposedTime, interval);
             
             if (isAvailable) {
                 const time = format(proposedTime, 'HH:mm', { locale: ptBR });
@@ -90,8 +56,48 @@ export class EmployeeService {
 
         return availableTimes;
     }
-    
-    private parseTimeToMinutes(time: string): number {
+
+    public async isTimeAvailable(
+        employeeId: number,
+        proposedTime: Date,
+        interval: number,
+        checkOnlyBlocks: boolean = false
+    ): Promise<boolean> {
+        const dayStart = startOfDay(proposedTime);
+        const dayEnd = endOfDay(proposedTime);
+
+        const appointments = await this.prisma.appointment.findMany({
+            where: {
+                employeeId,
+/*                 date: {
+                    gte: dayStart,
+                    lte: dayEnd,
+                }, */
+                status: Status.PENDING,
+                ...(checkOnlyBlocks ? { isBlock: true } : {}),
+            },
+            include: { appointmentServices: true },
+        });
+
+        return !appointments.some(appointment => {
+            const appointmentStart = new Date(appointment.date);
+
+/*             const appointmentDuration = appointment.appointmentServices.reduce((acc, as) => {
+                const service = services.find(s => s.id === as.serviceId);
+                return acc + (service?.duration || interval);
+            }, 0); */
+            const appointmentDuration = appointment.totalDuration || interval;
+
+            const appointmentEnd = addMinutes(appointmentStart, appointmentDuration);
+
+            const isIntersecting = isBefore(proposedTime, appointmentEnd) && isAfter(proposedTime, appointmentStart);
+            
+            return isEqual(proposedTime, appointmentStart) || isIntersecting;
+        });
+    }
+
+    private parseTimeToMinutes(time: string | null): number {
+        if (!time) throw new BadRequestException('Horário inválido');
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
     }
