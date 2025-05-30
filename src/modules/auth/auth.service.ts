@@ -158,6 +158,7 @@ export class AuthService {
       name: user.employee.name,
       phone: user.employee.phone,
       companyName: user.company.name,
+      companyLink: `${process.env.FRONTEND_URL}/cliente/${user.company.link}`,
     };
 
     return payload;

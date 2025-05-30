@@ -3,4 +3,5 @@ interface GetMePayload {
     name: string;
     phone: string;
     companyName: string;
+    companyLink: string;
 }
