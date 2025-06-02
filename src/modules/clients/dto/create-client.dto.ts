@@ -1,6 +1,4 @@
 import { IsNotEmpty, IsPhoneNumber, IsString } from "class-validator";
-
-
 export class CreateClientDto {
     @IsPhoneNumber("BR", { message: "Número de telefone inválido" })
     phone: string;
@@ -8,6 +6,6 @@ export class CreateClientDto {
     @IsString({ message: "Nome inválido" })
     name: string;
 
-    @IsNotEmpty({ message: "Empresa não informada." })
+    //@IsNotEmpty({ message: "Empresa não informada." })
     companyId: number;
 }

@@ -9,15 +9,15 @@ export class ClientsService {
     private readonly prisma: DatabaseService,
   ) {}
 
-  async create(createClientDto: CreateClientDto) {
-    const company = await this.prisma.company.findUnique({
+  async create(createClientDto: CreateClientDto, prisma = this.prisma): Promise<Client> {
+    const company = await prisma.company.findUnique({
       where: { id: createClientDto.companyId },
     });
     if (!company) {
       throw new BadRequestException('Empresa não encontrada');
     }
 
-    const existingClient = await this.prisma.client.findFirst({
+    const existingClient = await prisma.client.findFirst({
       where: {
         phone: createClientDto.phone,
         companyId: createClientDto.companyId,
@@ -25,13 +25,13 @@ export class ClientsService {
     });
 
     if (existingClient) {
-      return await this.prisma.client.update({
+      return await prisma.client.update({
         where: { id: existingClient.id },
         data: {name: createClientDto.name}}
       );
     }
 
-    return await this.prisma.client.create({
+    return await prisma.client.create({
       data: {
         name: createClientDto.name,
         phone: createClientDto.phone,
@@ -54,5 +54,28 @@ export class ClientsService {
         companyId: false,
       },
     });
+  }
+
+  public async findOne(id: number, companyId: number): Promise<Client | null> {
+    const client = await this.prisma.client.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+    });
+
+    if (!client) {
+      throw new BadRequestException('Cliente não encontrado');
+    }
+
+    return client;
+  }
+
+  public async update(id: number, createClientDto: CreateClientDto,){
+
+  }
+
+  public async remove(id: number, companyId: number){
+
   }
 }

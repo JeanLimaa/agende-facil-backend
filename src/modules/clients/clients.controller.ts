@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Put, ParseIntPipe } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -13,7 +13,11 @@ export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 
   @Post()
-  create(@Body() createClientDto: CreateClientDto) {
+  create(
+    @Body() createClientDto: CreateClientDto,
+    @GetUser('companyId') companyId: number,
+  ) {
+    createClientDto.companyId = companyId;
     return this.clientsService.create(createClientDto);
   }
 
@@ -23,5 +27,31 @@ export class ClientsController {
     @GetUser('companyId') companyId: number,
   ) {
     return this.clientsService.findAll(companyId);
+  }
+
+  @Get(':id')
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser('companyId') companyId: number,
+  ) {
+    return this.clientsService.findOne(id, companyId);
+  }
+
+  @Put(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() createClientDto: CreateClientDto,
+    @GetUser('companyId') companyId: number,
+  ) {
+    createClientDto.companyId = companyId; // Garantir que o companyId é do authenticated user
+    return this.clientsService.update(id, createClientDto);
+  }
+
+  @Delete(':id')
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser('companyId') companyId: number,
+  ) {
+    return this.clientsService.remove(id, companyId);
   }
 }
