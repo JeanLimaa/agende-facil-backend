@@ -45,6 +45,14 @@ export class AppointmentController {
     return this.appointmentService.findAllByCompany(companyId);
   }
 
+  @Get('/client/:clientId')
+  findAllByClient(
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @GetUser("companyId", ParseIntPipe) companyId: number
+  ) {
+    return this.appointmentService.findAllByClient(clientId, companyId);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.appointmentService.findAppointmentById(id);

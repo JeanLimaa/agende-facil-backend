@@ -320,4 +320,38 @@ export class AppointmentService {
       status: Status.PENDING,
     };
   }
+
+  public async findAllByClient(clientId: number, companyId: number) {
+    const client = this.prisma.client.findUnique({
+      where: { id: clientId, companyId },
+    });
+
+    if (!client) {
+      throw new BadRequestException('Cliente não encontrado ou não pertence à empresa.');
+    }
+
+    const appointments = await this.prisma.appointment.findMany({
+      where: { clientId },
+      include: {
+        employee: true,
+        appointmentServices: {
+          include: {
+            service: true,
+          },
+        },
+      },
+    });
+
+    // Extrai apenas os services e remove duplicatas
+    const formatted = appointments.map((appointment) => {
+      const { appointmentServices, ...rest } = appointment;
+
+      return {
+        ...rest,
+        services: appointmentServices.map((as) => as.service),
+      };
+    });
+
+    return formatted;
+  }
 }
