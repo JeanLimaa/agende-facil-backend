@@ -52,6 +52,7 @@ export class ClientsService {
         createdAt: true,
         updatedAt: true,
         companyId: false,
+        isBlocked: true,
       },
     });
   }
@@ -77,5 +78,27 @@ export class ClientsService {
 
   public async remove(id: number, companyId: number){
 
+  }
+
+  public async blockClient(id: number, companyId: number): Promise<Client> {
+    const client = await this.prisma.client.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+    });
+
+    if (!client) {
+      throw new BadRequestException('Cliente não encontrado');
+    }
+
+    if(client.companyId !== companyId) {
+      throw new BadRequestException('Cliente não pertence à empresa informada');
+    }
+
+    return await this.prisma.client.update({
+      where: { id },
+      data: { isBlocked: !client.isBlocked },
+    });
   }
 }

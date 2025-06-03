@@ -54,4 +54,12 @@ export class ClientsController {
   ) {
     return this.clientsService.remove(id, companyId);
   }
+
+  @Patch(':id/block')
+  blockClient(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser('companyId') companyId: number,
+  ) {
+    return this.clientsService.blockClient(id, companyId);
+  }
 }
