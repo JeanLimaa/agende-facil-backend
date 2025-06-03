@@ -44,6 +44,8 @@ model Client {
   updatedAt DateTime @updatedAt()
 
   appointments Appointment[] // Agendamentos feitos pelo cliente convidado
+
+  isBlocked Boolean @default(false) // Indica se o cliente está bloqueado
 }
 
 model Company {
