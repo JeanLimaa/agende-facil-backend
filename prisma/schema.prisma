@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -28,6 +28,8 @@ model User {
 
   employeeId Int?      @unique// Referência opcional ao Employee
   employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  @@map("users")
 }
 
 model Client {
@@ -46,6 +48,8 @@ model Client {
   appointments Appointment[] // Agendamentos feitos pelo cliente convidado
 
   isBlocked Boolean @default(false) // Indica se o cliente está bloqueado
+
+  @@map("clients")
 }
 
 model Company {
@@ -72,6 +76,8 @@ model Company {
   category    Category[] // Categorias de serviços
 
   clients Client[]
+
+  @@map("companies")
 }
 
 model Employee {
@@ -93,7 +99,9 @@ model Employee {
   appointments Appointment[] @relation("employee")// Agendamentos gerenciados pelo funcionário
 
   user User? @relation()
-  employeeCategorys    EmployeeCategorys[] // Serviços prestados pelo funcionário
+  employeeCategories    EmployeeCategory[] // Serviços prestados pelo funcionário
+
+  @@map("employees")
 }
 
 model Category {
@@ -106,9 +114,11 @@ model Category {
 
   services    Service[]
 
-  employeeCategorys EmployeeCategorys[]
+  employeeCategories EmployeeCategory[]
 
   @@unique([companyId, name])
+
+  @@map("categories")
 }
 
 model Service {
@@ -116,18 +126,20 @@ model Service {
   name         String
   description  String?
   duration     Int // Em minutos
-  price        Float
+  price        Decimal @db.Decimal(10, 2)
   companyId    Int // Relacionamento com a empresa
   company      Company       @relation(fields: [companyId], references: [id])
   appointments AppointmentService[] // Agendamentos desse serviço
 
-  //employeeCategorys    EmployeeCategorys[] // Funcionários que prestam esse serviço
+  //employeeCategory    EmployeeCategory[] // Funcionários que prestam esse serviço
 
   categoryId   Int
   category     Category @relation(fields: [categoryId], references: [id])
+
+  @@map("services")
 }
 
-model EmployeeCategorys {
+model EmployeeCategory {
   id         Int       @id @default(autoincrement())
 
   employeeId Int
@@ -140,6 +152,7 @@ model EmployeeCategorys {
   
 
   @@unique([employeeId, categoryId]) // Garante que um funcionário não preste o mesmo serviço mais de uma vez
+  @@map("employee_categories")
 }
 
 enum Status {
@@ -160,9 +173,9 @@ model Appointment {
   employeeId Int // Funcionário responsável
   employee   Employee @relation(fields: [employeeId], references: [id], name: "employee")
 
-  subTotalPrice Float // Preço subtotal do agendamento
-  discount     Float @default(0) // Desconto aplicado (se houver)
-  totalPrice Float // Preço total do agendamento
+  subTotalPrice Decimal @db.Decimal(10, 2) // Preço subtotal do agendamento
+  discount     Decimal @db.Decimal(10, 2) @default(0) // Desconto aplicado (se houver)
+  totalPrice Decimal @db.Decimal(10, 2) // Preço total do agendamento
 
   totalDuration Int  // Duração total do agendamento ( em minutos )
 
@@ -173,6 +186,8 @@ model Appointment {
   appointmentServices AppointmentService[] // Serviços agendados
 
   isBlock Boolean @default(false) // Indica se é bloqueio de agenda
+
+  @@map("appointments")
 }
 
 
@@ -186,6 +201,7 @@ model AppointmentService {
   service       Service     @relation(fields: [serviceId], references: [id])
 
   @@unique([appointmentId, serviceId]) // Garante que um serviço não seja duplicado em um mesmo agendamento
+  @@map("appointment_services")
 }
 
 enum PaymentStatus {
@@ -202,7 +218,7 @@ enum PaymentMethod {
 
 model Payment {
   id             Int             @id @default(autoincrement())
-  amount         Float
+  amount         Decimal @db.Decimal(10, 2)
   status         PaymentStatus   @default(PENDING)
 
   method         PaymentMethod   
@@ -213,6 +229,8 @@ model Payment {
 
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt()
+
+  @@map("payments")
 }
 
 enum PlanType {
@@ -224,10 +242,12 @@ model Plan {
   id          Int       @id @default(autoincrement())
   name        PlanType  @unique // Nome do plano (ex: "Grátis", "PRO")
   description String?   // Descrição do plano
-  price       Float     // Valor do plano
+  price       Decimal @db.Decimal(10, 2)     // Valor do plano
   duration    Int       // Duração em dias (ex: 15, 30, etc.)
   isActive    Boolean   @default(true) // Plano ativo ou não
   subscriptions Subscription[]
+
+  @@map("plans")
 }
 
 enum SubscriptionStatus {
@@ -260,4 +280,6 @@ model Subscription {
   
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt()
+
+  @@map("subscriptions")
 }

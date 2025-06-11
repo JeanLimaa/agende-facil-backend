@@ -33,7 +33,7 @@ export class EmployeeServicesService {
         }
 
         const createPromises = employeeServicePairs.categorys.map(async pair => {
-            const existingRelation = await this.prisma.employeeCategorys.findUnique({
+            const existingRelation = await this.prisma.employeeCategory.findUnique({
                 where: {
                     employeeId_categoryId: {
                         employeeId: employeeId,
@@ -46,7 +46,7 @@ export class EmployeeServicesService {
                 throw new ConflictException('Relação entre funcionário e serviço já existe');
             }
             
-            return await this.prisma.employeeCategorys.create({
+            return await this.prisma.employeeCategory.create({
                 data: {
                     employeeId: employeeId,
                     categoryId: pair.categoryId,
@@ -66,7 +66,7 @@ export class EmployeeServicesService {
         }
 
         const deletePromises = employeeServicePairs.categorys.map(pair => 
-            this.prisma.employeeCategorys.deleteMany({
+            this.prisma.employeeCategory.deleteMany({
                 where: {
                     employeeId: employeeId,
                     categoryId: pair.categoryId,
@@ -77,7 +77,7 @@ export class EmployeeServicesService {
     }
 
     public async listAllEmployeeToCategory(categoryId: number) {
-        const employeeServices = await this.prisma.employeeCategorys.findMany({
+        const employeeServices = await this.prisma.employeeCategory.findMany({
             where: { categoryId },
             include: { employee: true }
         });
