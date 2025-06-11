@@ -23,6 +23,9 @@
     "seed:dev": "ts-node ./prisma/seeds/plans.seed.ts && ts-node ./prisma/seeds/initial-dev.seed.ts",
     "seed:initial:dev": "ts-node ./prisma/seeds/initial-dev.seed.ts"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seeds/plans.seed.ts"
+  },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.3.0",
