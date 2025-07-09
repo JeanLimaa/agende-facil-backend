@@ -66,16 +66,18 @@ model Company {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt()
 
+  intervalBetweenAppointments Int @default(15) // Intervalo entre agendamentos (em minutos)
+
+  websiteImageUrl String? // URL da imagem do site da empresa
+
   employees   Employee[] // Relacionamento com funcionários (usuários)
   services    Service[] // Serviços oferecidos
-
   subscriptions Subscription[] // Assinaturas ativas
-
   users       User[] // Usuários da empresa
-
   category    Category[] // Categorias de serviços
-
   clients Client[]
+  companyAddress CompanyAddress? // Endereço da empresa
+  companyWorkingHours CompanyWorkingHour[] // Horários de funcionamento da empresa
 
   @@map("companies")
 }
@@ -96,10 +98,13 @@ model Employee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt()
 
-  appointments Appointment[] @relation("employee")// Agendamentos gerenciados pelo funcionário
+  displayOnline Boolean @default(true) // Indica se o funcionário deve ser exibido online
+  profileImageUrl String?
 
   user User? @relation()
+  appointments Appointment[] @relation("employee")// Agendamentos gerenciados pelo funcionário
   employeeCategories    EmployeeCategory[] // Serviços prestados pelo funcionário
+  workingHours EmployeeWorkingHour[] // Horários de trabalho do funcionário
 
   @@map("employees")
 }
@@ -282,4 +287,42 @@ model Subscription {
   updatedAt         DateTime         @updatedAt()
 
   @@map("subscriptions")
+}
+
+model CompanyAddress {
+  id          Int      @id @default(autoincrement())
+  street      String
+  number      String
+  neighborhood String
+  city        String
+  state       String
+  zipCode     String
+
+  companyId   Int @unique
+  company     Company @relation(fields: [companyId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt()
+
+  @@map("company_addresses")
+}
+
+model EmployeeWorkingHour {
+  id             Int          @id @default(autoincrement())
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  isClosed       Boolean      @default(false)
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+}
+
+model CompanyWorkingHour {
+  id             Int          @id @default(autoincrement())
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  isClosed       Boolean      @default(false)
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
 }
