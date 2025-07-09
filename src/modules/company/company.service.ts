@@ -3,43 +3,13 @@ import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 import slugify from 'slugify';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
+import { CreateCompanyAddressDTO } from './dto/create-company-address.dto';
 
 @Injectable()
 export class CompanyService {
     constructor(
         private readonly prisma: DatabaseService,
     ) { }
-
-    private async isLinkExists(link: string): Promise<boolean> {
-        const company = await this.prisma.company.findUnique({
-            where: { link },
-        });
-
-        return !!company;
-    }
-
-    private async generateUniqueLink(companyName: string): Promise<string> {
-        // 1. Transforma o nome da empresa em "slug"
-        let baseLink = slugify(companyName, { lower: true, strict: true });
-        
-        // 2. Verificar se o link já existe no banco de dados
-        // caso o link com o nome nao exista, retorna o link
-        const linkExists = await this.isLinkExists(baseLink);
-        if (!linkExists) {
-            return baseLink;
-        }
-
-        // 3. Caso o link já exista, adicionar um contador ao final do link
-        let link = baseLink;
-        let counter = 1;
-
-        while (await this.isLinkExists(link)) {
-            link = `${baseLink}${counter}`;
-            counter++;
-        }
-
-        return link;
-    }
 
     public async createCompany(
         data: Omit<Prisma.CompanyCreateInput, 'link'>,
@@ -147,5 +117,109 @@ export class CompanyService {
             },
         });
         return company;
+    }
+
+    public async createCompanyAddress(companyId: number, data: CreateCompanyAddressDTO){
+        const company = await this.prisma.company.findUnique({
+            where: { id: companyId }
+        });
+
+        if (!company) {
+            throw new NotFoundException('Empresa não encontrada');
+        }
+
+        const companyAddress = await this.prisma.companyAddress.findFirst({
+            where: { companyId }
+        });
+
+        if (companyAddress) {
+            return this.prisma.companyAddress.update({
+                where: { companyId },
+                data: {
+                    zipCode: data.zipCode,
+                    street: data.street,
+                    number: data.number,
+                    neighborhood: data.neighborhood,
+                    city: data.city,
+                    state: data.state,
+                    country: data.country
+                }
+            });
+        } else {
+            return this.prisma.companyAddress.create({
+                data: {
+                    companyId,
+                    zipCode: data.zipCode,
+                    street: data.street,
+                    number: data.number,
+                    neighborhood: data.neighborhood,
+                    city: data.city,
+                    state: data.state,
+                    country: data.country
+                }
+            });
+        }
+    }
+
+    public async getCompanyInfo(companyId: number) {
+        const company = await this.prisma.company.findUniqueOrThrow({
+            where: { id: companyId}
+        });
+
+        const companyData = {
+            name: company.name,
+            email: company.email,
+            phone: company.phone,
+            description: company.description,
+        }
+
+        const companyAddress = await this.prisma.companyAddress.findFirst({
+            where: { companyId }
+        });
+
+        const companyAddressData = {
+            zipCode: companyAddress?.zipCode || '',
+            street: companyAddress?.street || '',
+            number: companyAddress?.number || '',
+            neighborhood: companyAddress?.neighborhood || '',
+            city: companyAddress?.city || '',
+            state: companyAddress?.state || '',
+        }
+
+        return {
+            profile: companyData,
+            address: companyAddress ? companyAddressData : null
+        };
+    }
+
+    private async isLinkExists(link: string): Promise<boolean> {
+        const company = await this.prisma.company.findUnique({
+            where: { link },
+        });
+
+        return !!company;
+    }
+
+    private async generateUniqueLink(companyName: string): Promise<string> {
+        // 1. Transforma o nome da empresa em "slug"
+        let baseLink = slugify(companyName, { lower: true, strict: true });
+        
+        // 2. Verificar se o link já existe no banco de dados
+        // caso o link com o nome nao exista, retorna o link
+        const linkExists = await this.isLinkExists(baseLink);
+        if (!linkExists) {
+            return baseLink;
+        }
+
+        // 3. Caso o link já exista, adicionar um contador ao final do link
+        let link = baseLink;
+        let counter = 1;
+
+        while (await this.isLinkExists(link)) {
+            link = `${baseLink}${counter}`;
+            counter++;
+        }
+
+        return link;
     }
 }

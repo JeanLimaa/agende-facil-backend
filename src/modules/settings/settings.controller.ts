@@ -5,6 +5,7 @@ import { GetUser } from 'src/common/decorators/GetUser.decorator';
 import { CreateEmployeeDto } from '../employee/dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { UpdateCompanyProfileDto } from '../company/dto/update-company-profile.dto';
+import { CreateCompanyAddressDTO } from '../company/dto/create-company-address.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('settings')
@@ -13,7 +14,7 @@ export class SettingsController {
         private readonly employeeService: EmployeeService,
         private readonly companyService: CompanyService, 
     ) {}
-    
+
     @Post('employee/register')
     async registerEmployee(@GetUser("userId") userId: number, @Body() body: CreateEmployeeDto) {
         return this.employeeService.registerEmployee(userId, body);
@@ -25,6 +26,14 @@ export class SettingsController {
         @Body('interval') interval: number
     ) {
         //return this.employeeService.updateIntervalTime(companyId, interval);
+    }
+    
+    @Put('companies/address')
+    async createCompanyAddress(
+        @GetUser("companyId") companyId: number,
+        @Body() body: CreateCompanyAddressDTO
+    ) {
+        return this.companyService.createCompanyAddress(companyId, body);
     }
 
     @Put('/companies/profile')
