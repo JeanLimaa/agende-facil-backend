@@ -1,14 +1,19 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma, Status } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
 import { format, isBefore, isAfter, addMinutes, startOfDay, endOfDay, parseISO, isEqual } from 'date-fns';
 import { is, ptBR } from 'date-fns/locale';
+import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { CompanyService } from '../company/company.service';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class EmployeeService {
     constructor(
-        private readonly prisma: DatabaseService
+        private readonly prisma: DatabaseService,
+        private readonly userService: UserService,
+        private readonly companyService: CompanyService
     ) { }
 
     public async getEmployeeById(employeeId: number) {
@@ -27,7 +32,6 @@ export class EmployeeService {
     public async getAvailableTimes(employeeId: number, date: string) {
         const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
         if (!employee) throw new BadRequestException('Funcionário não encontrado');
-
         
         const parsedDate = parseISO(date + " 00:00:00");
         if (isNaN(parsedDate.getTime())) throw new BadRequestException('Data inválida. Esperado formato: "yyyy-MM-dd"');
@@ -106,5 +110,23 @@ export class EmployeeService {
         return await this.prisma.employee.create({
             data
         });
+    }
+
+    public async registerEmployee(adminId: number, user: CreateEmployeeDto) {
+        const isAdminRequest = await this.userService.isUserAdmin(adminId);
+
+        if (!isAdminRequest) {
+            throw new UnauthorizedException('Apenas administradores podem cadastrar funcionários');
+        }
+
+        const companyId = await this.companyService.findCompanyIdByUserId(adminId);
+        const employee = await this.createEmployee({
+            companyId,
+            name: user.name,
+            phone: user.phone,
+
+        });
+
+        return employee;
     }
 }

@@ -4,7 +4,7 @@ import { UserLoginDto } from './dto/user-login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/GetUser.decorator';
-import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { CreateEmployeeDto } from '../employee/dto/create-employee.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -24,11 +24,5 @@ export class AuthController {
   @Get('me')
   async getMe(@GetUser("userId") userId: number) {
     return this.authService.getMe(userId);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('register-employee')
-  async registerEmployee(@GetUser("userId") userId: number, @Body() body: CreateEmployeeDto) {
-    return this.authService.registerEmployee(userId, body);
   }
 }

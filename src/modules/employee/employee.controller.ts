@@ -1,7 +1,8 @@
-import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { EmployeeService } from './employee.service';
 import { GetUser } from 'src/common/decorators/GetUser.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { CreateEmployeeDto } from './dto/create-employee.dto';
 
 @Controller('employee')
 export class EmployeeController {

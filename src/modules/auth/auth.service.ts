@@ -5,7 +5,7 @@ import { UserService } from '../user/user.service';
 import { PlanType, Role, User } from '@prisma/client';
 import { UserLoginDto } from './dto/user-login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
-import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { CreateEmployeeDto } from '../employee/dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { DatabaseService } from 'src/services/Database.service';
@@ -41,25 +41,11 @@ export class AuthService {
   }
 
   private async validateNewUser(user: CreateUserDto | CreateEmployeeDto) {
-    if (!user.email || !user.password) {
-      throw new UnauthorizedException('O email e a senha são obrigatórios');
-    }
-
     const userExists = await this.userService.findByEmail(user.email);
     
     if (userExists) {
       throw new UnauthorizedException('Email já cadastrado');
     }
-  }
-
-  private async isAdminRequest(userId: number){
-    const admin = await this.userService.findById(userId);
-
-    if (!admin || admin.role !== Role.ADMIN) {
-      return false;
-    }
-
-    return true;
   }
 
   public async login(body: UserLoginDto) {
@@ -107,7 +93,14 @@ export class AuthService {
     );
 
     // Criar um funcionário para o administrador
-    const employee = await this.registerEmployee(newUser.id, user);
+    const employeeData: CreateEmployeeDto = {
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+      shouldDisplayOnline: true,
+      professionalImage: null,
+    }
+    const employee = await this.employeeService.registerEmployee(newUser.id, employeeData);
 
     // Update the user with the employeeId
     const userUpdated = await this.userService.update(newUser.id, { employeeId: employee.id });
@@ -122,23 +115,6 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(payload),
     };
-  }
-
-  public async registerEmployee(adminId: number, user: CreateEmployeeDto){
-    const isAdminRequest = await this.isAdminRequest(adminId);
-    
-    if(!isAdminRequest){
-      throw new UnauthorizedException('Apenas administradores podem cadastrar funcionários');
-    }
-
-    const companyId = await this.companyService.findCompanyIdByUserId(adminId);
-    const employee = await this.employeeService.createEmployee({
-      companyId,
-      name: user.name,
-      phone: user.phone,
-    });
-
-    return employee;
   }
 
   public async getMe(userId: number): Promise<GetMePayload> {
