@@ -297,6 +297,7 @@ model CompanyAddress {
   city        String
   state       String
   zipCode     String
+  country     String
 
   companyId   Int @unique
   company     Company @relation(fields: [companyId], references: [id])
@@ -315,6 +316,8 @@ model EmployeeWorkingHour {
   isClosed       Boolean      @default(false)
   employeeId Int
   employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_working_hours")
 }
 
 model CompanyWorkingHour {
@@ -325,4 +328,6 @@ model CompanyWorkingHour {
   isClosed       Boolean      @default(false)
   companyId Int
   company   Company @relation(fields: [companyId], references: [id])
+
+  @@map("company_working_hours")
 }
