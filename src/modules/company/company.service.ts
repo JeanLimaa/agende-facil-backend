@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/co
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 import slugify from 'slugify';
+import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 
 @Injectable()
 export class CompanyService {
@@ -119,6 +120,32 @@ export class CompanyService {
             throw new NotFoundException('Empresa não encontrada');
         }
 
+        return company;
+    }
+
+    public async updateIntervalTime(companyId: number, interval: number) {
+        const company = await this.prisma.company.update({
+            where: {
+                id: companyId
+            },
+            data: {
+                intervalBetweenAppointments: interval
+            }
+        });
+        return company;
+    }
+
+    public async updateCompanyProfile(companyId: number, data: UpdateCompanyProfileDto) {
+        const company = await this.prisma.company.update({
+            where: {
+                id: companyId
+            },
+            data: {
+                name: data.name,
+                phone: data.phone,
+                email: data.email
+            },
+        });
         return company;
     }
 }

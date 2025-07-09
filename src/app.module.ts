@@ -11,6 +11,7 @@ import { EmployeeServicesModule } from './modules/employee-services/employee-ser
 import { EmployeeModule } from './modules/employee/employee.module';
 import { AppointmentModule } from './modules/appointments/appointment.module';
 import { ClientsModule } from './modules/clients/clients.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
@@ -23,7 +24,8 @@ import { ClientsModule } from './modules/clients/clients.module';
     EmployeeServicesModule,
     EmployeeModule,
     AppointmentModule,
-    ClientsModule
+    ClientsModule,
+    SettingsModule
   ],
   controllers: [AppController],
   providers: [AppService],
