@@ -20,7 +20,6 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migrate": "prisma migrate dev",
     "seed:plans": "ts-node ./prisma/seeds/plans.seed.ts",
-    "seed:dev": "ts-node ./prisma/seeds/plans.seed.ts && ts-node ./prisma/seeds/initial-dev.seed.ts",
     "seed:initial:dev": "ts-node ./prisma/seeds/initial-dev.seed.ts"
   },
   "prisma": {

@@ -8,6 +8,7 @@ import { UserService } from '../user/user.service';
 import { DatabaseService } from 'src/services/Database.service';
 import { CompanyService } from '../company/company.service';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { EmployeeService } from '../employee/employee.service';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { SubscriptionService } from '../subscription/subscription.service';
     DatabaseService, 
     CompanyService,
     SubscriptionService,
+    EmployeeService
   ],
   exports: [AuthService],
 })

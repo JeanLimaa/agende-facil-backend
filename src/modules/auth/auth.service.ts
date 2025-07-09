@@ -10,6 +10,7 @@ import { CompanyService } from '../company/company.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { DatabaseService } from 'src/services/Database.service';
 import { UserPayload } from './interfaces/UserPayload.interface';
+import { EmployeeService } from '../employee/employee.service';
 
 @Injectable()
 export class AuthService {
@@ -18,7 +19,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly companyService: CompanyService,
     private readonly subscriptionService: SubscriptionService,
-    private readonly prisma: DatabaseService
+    private readonly prisma: DatabaseService,
+    private readonly employeeService: EmployeeService
   ) {}
 
   private async validateUser(email: string, password: string): Promise<Omit<User, "password">> {
@@ -128,10 +130,9 @@ export class AuthService {
     if(!isAdminRequest){
       throw new UnauthorizedException('Apenas administradores podem cadastrar funcionários');
     }
-    //await this.validateNewUser(user);
 
     const companyId = await this.companyService.findCompanyIdByUserId(adminId);
-    const employee = await this.userService.createEmployee({
+    const employee = await this.employeeService.createEmployee({
       companyId,
       name: user.name,
       phone: user.phone,

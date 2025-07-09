@@ -31,12 +31,6 @@ export class UserService {
         });
     }
 
-    public async createEmployee(data: Prisma.EmployeeCreateManyInput){
-        return await this.prisma.employee.create({
-            data
-        });
-    }
-
     async findByEmail(email: string){
         return await this.prisma.user.findUnique({
             where: {

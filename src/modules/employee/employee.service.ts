@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Status } from '@prisma/client';
+import { Prisma, Status } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
 import { format, isBefore, isAfter, addMinutes, startOfDay, endOfDay, parseISO, isEqual } from 'date-fns';
@@ -100,5 +100,11 @@ export class EmployeeService {
         if (!time) throw new BadRequestException('Horário inválido');
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
+    }
+
+    public async createEmployee(data: Prisma.EmployeeCreateManyInput){
+        return await this.prisma.employee.create({
+            data
+        });
     }
 }
