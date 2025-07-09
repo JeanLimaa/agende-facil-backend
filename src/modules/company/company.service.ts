@@ -184,6 +184,7 @@ export class CompanyService {
             neighborhood: companyAddress?.neighborhood || '',
             city: companyAddress?.city || '',
             state: companyAddress?.state || '',
+            country: companyAddress?.country || ''
         }
 
         return {
