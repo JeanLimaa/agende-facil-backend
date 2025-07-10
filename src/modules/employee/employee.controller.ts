@@ -9,7 +9,7 @@ export class EmployeeController {
   constructor(private readonly employeeService: EmployeeService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Get('/list/all')
+  @Get()
   async listAll(
     @GetUser("companyId") companyId: number,
   ) {
@@ -34,7 +34,7 @@ export class EmployeeController {
     return await this.employeeService.getEmployeeById(employeeId);
   }
 
-  @Get('/list/:companyId')
+  @Get('/company/:companyId')
   async listByCompanyId(@Param('companyId', ParseIntPipe) companyId: number) {
     return await this.employeeService.listByCompanyId(companyId);
   }
