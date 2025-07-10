@@ -15,11 +15,6 @@ export class SettingsController {
         private readonly companyService: CompanyService, 
     ) {}
 
-    @Post('employee/register')
-    async registerEmployee(@GetUser("userId") userId: number, @Body() body: CreateEmployeeDto) {
-        return this.employeeService.registerEmployee(userId, body);
-    }
-
     @Patch('companies/interval-time')
     async updateIntervalTime(
         @GetUser("companyId") companyId: number,

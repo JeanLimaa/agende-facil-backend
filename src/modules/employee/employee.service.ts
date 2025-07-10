@@ -16,15 +16,22 @@ export class EmployeeService {
         private readonly companyService: CompanyService
     ) { }
 
-    public async getEmployeeById(employeeId: number) {
-        return await this.prisma.employee.findUnique({
+    public async getOrThrowEmployeeById(employeeId: number) {
+        const employee = await this.prisma.employee.findUnique({
             where: { id: employeeId }
         });
+
+        if (!employee) {
+            throw new BadRequestException('Funcionário não encontrado');
+        }
+
+        return employee;
     }
 
     public async listByCompanyId(companyId: number) {
         return await this.prisma.employee.findMany({
-            where: { companyId }
+            where: { companyId, isActive: true },
+            orderBy: { name: 'asc' },
         });
     }
 
@@ -112,7 +119,7 @@ export class EmployeeService {
         });
     }
 
-    public async registerEmployee(adminId: number, user: CreateEmployeeDto) {
+    public async registerEmployee(adminId: number, dto: CreateEmployeeDto) {
         const isAdminRequest = await this.userService.isUserAdmin(adminId);
 
         if (!isAdminRequest) {
@@ -122,11 +129,52 @@ export class EmployeeService {
         const companyId = await this.companyService.findCompanyIdByUserId(adminId);
         const employee = await this.createEmployee({
             companyId,
-            name: user.name,
-            phone: user.phone,
-
+            name: dto.name,
+            phone: dto.phone,
+            displayOnline: dto.displayOnline,
+            position: dto.position,
+            profileImageUrl: dto.profileImageUrl || null,
         });
 
         return employee;
+    }
+
+    public async updateEmployee(userId: number, employeeId: number, dto: CreateEmployeeDto) {
+        const isAdminRequest = await this.userService.isUserAdmin(userId);
+
+        if (!isAdminRequest && userId !== employeeId) {
+            throw new UnauthorizedException('Apenas administradores podem atualizar funcionários');
+        }
+
+        await this.getOrThrowEmployeeById(employeeId);
+
+        const updatedEmployee = await this.prisma.employee.update({
+            where: { id: employeeId },
+            data: {
+                name: dto.name,
+                phone: dto.phone,
+                displayOnline: dto.displayOnline,
+                position: dto.position,
+                profileImageUrl: dto.profileImageUrl || null,
+            },
+        });
+
+        return updatedEmployee;
+    }
+
+    public async deleteEmployee(userId: number, employeeId: number) {
+        await this.getOrThrowEmployeeById(employeeId);
+
+        const isAdminRequest = await this.userService.isUserAdmin(userId);
+        if (!isAdminRequest && userId !== employeeId) {
+            throw new UnauthorizedException('Apenas administradores podem excluir funcionários');
+        }
+
+        return await this.prisma.employee.update({
+            where: { id: employeeId },
+            data: {
+                isActive: false
+            }
+        });
     }
 }

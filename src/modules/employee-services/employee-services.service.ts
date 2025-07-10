@@ -13,10 +13,7 @@ export class EmployeeServicesService {
     public async createMany(employeeServicePairs: EmployeeCategoryDTO) {
         const employeeId = employeeServicePairs.employeeId;
 
-        const employee = await this.employeeService.getEmployeeById(employeeId);
-        if (!employee) {
-            throw new NotFoundException('Funcionário não encontrado');
-        }
+        await this.employeeService.getOrThrowEmployeeById(employeeId);
 
         // Verificar se todos os categoryIds existem
         const categoryIds = employeeServicePairs.categorys.map(pair => pair.categoryId);
@@ -60,10 +57,7 @@ export class EmployeeServicesService {
     public async deleteMany(employeeServicePairs: EmployeeCategoryDTO) {
         const employeeId = employeeServicePairs.employeeId;
 
-        const employee = await this.employeeService.getEmployeeById(employeeId);
-        if (!employee) {
-            throw new NotFoundException('Funcionário não encontrado');
-        }
+        await this.employeeService.getOrThrowEmployeeById(employeeId);
 
         const deletePromises = employeeServicePairs.categorys.map(pair => 
             this.prisma.employeeCategory.deleteMany({
