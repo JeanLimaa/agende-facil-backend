@@ -40,7 +40,7 @@ export class AuthService {
     return result; // Remove a senha do resultado
   }
 
-  private async validateNewUser(user: CreateUserDto | CreateEmployeeDto) {
+  private async validateNewUser(user: CreateUserDto) {
     const userExists = await this.userService.findByEmail(user.email);
     
     if (userExists) {
@@ -96,9 +96,9 @@ export class AuthService {
     const employeeData: CreateEmployeeDto = {
       name: user.name,
       phone: user.phone,
-      email: user.email,
-      shouldDisplayOnline: true,
-      professionalImage: null,
+      displayOnline: true,
+      position: null,
+      profileImageUrl: null,
     }
     const employee = await this.employeeService.registerEmployee(newUser.id, employeeData);
 
