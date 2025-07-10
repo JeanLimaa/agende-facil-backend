@@ -101,6 +101,8 @@ model Employee {
   displayOnline Boolean @default(true) // Indica se o funcionário deve ser exibido online
   profileImageUrl String?
 
+  isActive Boolean @default(true)
+
   user User? @relation()
   appointments Appointment[] @relation("employee")// Agendamentos gerenciados pelo funcionário
   employeeCategories    EmployeeCategory[] // Serviços prestados pelo funcionário
