@@ -13,6 +13,8 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       stopAtFirstError: true,
+      transform: true,
+      whitelist: true,
       exceptionFactory: (errors) => {
         const firstError = findFirstConstraint(errors);
         return new BadRequestException(firstError);
