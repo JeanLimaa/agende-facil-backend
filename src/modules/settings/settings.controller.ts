@@ -1,4 +1,4 @@
-import { Body, Controller, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, ParseIntPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { EmployeeService } from '../employee/employee.service';
 import { GetUser } from 'src/common/decorators/GetUser.decorator';
@@ -6,8 +6,12 @@ import { CreateEmployeeDto } from '../employee/dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { UpdateCompanyProfileDto } from '../company/dto/update-company-profile.dto';
 import { CreateCompanyAddressDTO } from '../company/dto/create-company-address.dto';
+import { RoleGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/Roles.decorator';
+import { UpdateEmployeeDto } from '../employee/dto/update-employee.dto';
 
-@UseGuards(JwtAuthGuard)
+@Roles(['ADMIN'])
+@UseGuards(JwtAuthGuard, RoleGuard)
 @Controller('settings')
 export class SettingsController {
     constructor(
@@ -15,23 +19,24 @@ export class SettingsController {
         private readonly companyService: CompanyService, 
     ) {}
 
-    @Patch('companies/interval-time')
-    async updateIntervalTime(
-        @GetUser("companyId") companyId: number,
-        @Body('interval') interval: number
+    @Post('employee')
+    async registerEmployee(
+        @GetUser("userId") userId: number,
+        @Body() body: CreateEmployeeDto
     ) {
-        //return this.employeeService.updateIntervalTime(companyId, interval);
-    }
-    
-    @Put('companies/address')
-    async createCompanyAddress(
-        @GetUser("companyId") companyId: number,
-        @Body() body: CreateCompanyAddressDTO
-    ) {
-        return this.companyService.createCompanyAddress(companyId, body);
+        return this.employeeService.registerEmployee(userId, body);
     }
 
-    @Put('/companies/profile')
+    @Put('/employee/:employeeId')
+    async updateEmployee(
+        @GetUser("userId") userId: number, 
+        @Param('employeeId', ParseIntPipe) employeeId: number, 
+        @Body() body: UpdateEmployeeDto
+    ) {
+        return this.employeeService.updateEmployee(userId, employeeId, body);
+    }
+
+    @Put('/company/profile')
     async updateCompanyProfile(
         @GetUser("companyId") companyId: number,
         @Body() body: UpdateCompanyProfileDto
@@ -39,19 +44,11 @@ export class SettingsController {
         return this.companyService.updateCompanyProfile(companyId, body);
     }
 
-    @Put('companies/working-hours')
+    @Put('/company/working-hours')
     async updateCompanyWorkingHours(
         @GetUser("companyId") companyId: number,
         @Body() body: { dayOfWeek: number; startTime: string; endTime: string; isClosed?: boolean }
     ) {
         //return this.companyService.updateCompanyWorkingHours(companyId, body);
-    }
-
-    @Put('employee/working-hours')
-    async updateEmployeeWorkingHours(
-        @GetUser("userId") employeeId: number,
-        @Body() body: { dayOfWeek: number; startTime: string; endTime: string; isClosed?: boolean }
-    ) {
-        //return this.employeeService.updateEmployeeWorkingHours(employeeId, body);
     }
 }
