@@ -93,13 +93,13 @@ export class AuthService {
     );
 
     // Criar um funcionário para o administrador
-    const employeeData: CreateEmployeeDto = {
+    const employeeData: CreateEmployeeDto = {profile: {
       name: user.name,
       phone: user.phone,
       displayOnline: true,
       position: null,
       profileImageUrl: null,
-    }
+    }}
     const employee = await this.employeeService.registerEmployee(newUser.id, employeeData);
 
     // Update the user with the employeeId

@@ -129,12 +129,29 @@ export class EmployeeService {
         const companyId = await this.companyService.findCompanyIdByUserId(adminId);
         const employee = await this.createEmployee({
             companyId,
-            name: dto.name,
-            phone: dto.phone,
-            displayOnline: dto.displayOnline,
-            position: dto.position,
-            profileImageUrl: dto.profileImageUrl || null,
+            name: dto.profile.name,
+            phone: dto.profile.phone,
+            displayOnline: dto.profile.displayOnline,
+            position: dto.profile.position,
+            profileImageUrl: dto.profile.profileImageUrl || null,
         });
+
+        if(dto.workingHours && dto.workingHours.length > 0) {
+            const workingHoursData = Object.keys(dto.workingHours).map(dayOfWeek => {
+                const wh = dto.workingHours[dayOfWeek];
+                return {
+                    employeeId: employee.id,
+                    dayOfWeek: Number(dayOfWeek),
+                    startTime: wh.startTime,
+                    endTime: wh.endTime,
+                    isClosed: wh.isClosed || false
+                };
+            });
+
+            await this.prisma.employeeWorkingHour.createMany({
+                data: workingHoursData
+            });
+        }
 
         return employee;
     }
@@ -151,11 +168,11 @@ export class EmployeeService {
         const updatedEmployee = await this.prisma.employee.update({
             where: { id: employeeId },
             data: {
-                name: dto.name,
-                phone: dto.phone,
-                displayOnline: dto.displayOnline,
-                position: dto.position,
-                profileImageUrl: dto.profileImageUrl || null,
+                name: dto.profile.name,
+                phone: dto.profile.phone,
+                displayOnline: dto.profile.displayOnline,
+                position: dto.profile.position,
+                profileImageUrl: dto.profile.profileImageUrl || null,
             },
         });
 
