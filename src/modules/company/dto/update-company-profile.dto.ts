@@ -1,9 +1,17 @@
-import { IsEmail, IsOptional, IsPhoneNumber, IsString, Length } from "class-validator";
+import {
+    IsDefined,
+    IsEmail,
+    IsOptional,
+    IsPhoneNumber,
+    IsString,
+    Length,
+    ValidateNested,
+} from "class-validator";
+import { Type } from "class-transformer";
+import { CreateCompanyAddressDTO } from "./create-company-address.dto";
 
-export class UpdateCompanyProfileDto {
-    @IsString({
-        message: "O nome da empresa é obrigatório.",
-    })
+class CompanyProfileDto {
+    @IsString({ message: "O nome da empresa é obrigatório." })
     name: string;
 
     @IsPhoneNumber("BR", {
@@ -17,11 +25,20 @@ export class UpdateCompanyProfileDto {
     email: string;
 
     @IsOptional()
-    @IsString({
-        message: "A descrição deve ser uma string.",
-    })
+    @IsString({ message: "A descrição deve ser uma string." })
     @Length(0, 500, {
         message: "A descrição não pode exceder 500 caracteres.",
     })
     description?: string;
+}
+
+export class UpdateCompanyProfileDto {
+    @ValidateNested()
+    @Type(() => CompanyProfileDto)
+    profile: CompanyProfileDto;
+
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => CreateCompanyAddressDTO)
+    address?: CreateCompanyAddressDTO;
 }

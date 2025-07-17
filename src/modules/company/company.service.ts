@@ -105,21 +105,68 @@ export class CompanyService {
         return company;
     }
 
+    public async createCompanyWorkingHours(companyId: number, data: {dayOfWeek: string, startTime: string, endTime: string}[]) {
+        return await this.prisma.companyWorkingHour.createMany({
+            data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+                companyId,
+                isClosed: false,
+                dayOfWeek,
+                startTime: data[dayOfWeek].startTime,
+                endTime: data[dayOfWeek].endTime
+            })),
+        });
+    }
+
+    public async updateCompanyWorkingHours(
+        companyId: number,
+        data: { dayOfWeek: number; startTime: string; endTime: string; isClosed?: boolean }[]
+    ) {
+        const company = await this.prisma.company.findUnique({
+            where: { id: companyId }
+        });
+
+        if (!company) {
+            throw new NotFoundException('Empresa não encontrada');
+        }
+
+        const updatedWorkingHours = data.map(hour => ({
+            where: {
+                companyId_dayOfWeek: {
+                    companyId,
+                    dayOfWeek: hour.dayOfWeek
+                }
+            },
+            data: {
+                startTime: hour.startTime,
+                endTime: hour.endTime,
+                isClosed: hour.isClosed ?? false
+            }
+        }));
+
+        return await this.prisma.companyWorkingHour.updateMany({
+            data: updatedWorkingHours
+        });
+    }
+
     public async updateCompanyProfile(companyId: number, data: UpdateCompanyProfileDto) {
         const company = await this.prisma.company.update({
             where: {
                 id: companyId
             },
             data: {
-                name: data.name,
-                phone: data.phone,
-                email: data.email
+                name: data.profile.name,
+                phone: data.profile.phone,
+                email: data.profile.email,
+                description: data?.profile.description,
             },
         });
+
+        await this.createOrUpdateCompanyAddress(companyId, data.address);
+
         return company;
     }
 
-    public async createCompanyAddress(companyId: number, data: CreateCompanyAddressDTO){
+    private async createOrUpdateCompanyAddress(companyId: number, data: CreateCompanyAddressDTO){
         const company = await this.prisma.company.findUnique({
             where: { id: companyId }
         });
@@ -189,8 +236,25 @@ export class CompanyService {
 
         return {
             profile: companyData,
-            address: companyAddress ? companyAddressData : null
+            address: companyAddress ? companyAddressData : null,
+            schedule: {
+                workingHours: await this.getCompanyWorkingHours(companyId), 
+                serviceInterval: company.intervalBetweenAppointments
+            }
         };
+    }
+
+    private async getCompanyWorkingHours(companyId: number) {
+        const workingHours = await this.prisma.companyWorkingHour.findMany({
+            where: { companyId },
+            orderBy: { dayOfWeek: 'asc' }
+        });
+
+        return workingHours.map(hour => ({
+            dayOfWeek: hour.dayOfWeek,
+            startTime: hour.startTime,
+            endTime: hour.endTime
+        }));
     }
 
     private async isLinkExists(link: string): Promise<boolean> {
