@@ -7,6 +7,7 @@ import { is, ptBR } from 'date-fns/locale';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { UserService } from '../user/user.service';
+import { parseTimeToMinutes } from 'src/common/helpers/time.helper';
 
 @Injectable()
 export class EmployeeService {
@@ -46,8 +47,8 @@ export class EmployeeService {
         const today = startOfDay(new Date());
         if(isBefore(parsedDate, today)) throw new BadRequestException('A data não pode ser anterior a hoje.');
 
-        const employeeStartHour = employee.startHour ? this.parseTimeToMinutes(employee.startHour) : 0;  // Ex: Converte "09:00" (HH:mm) para minutos
-        const employeeEndHour = employee.endHour ? this.parseTimeToMinutes(employee.endHour) : 1 * 60 * 23 ;
+        const employeeStartHour = employee.startHour ? parseTimeToMinutes(employee.startHour) : 0;  // Ex: Converte "09:00" (HH:mm) para minutos
+        const employeeEndHour = employee.endHour ? parseTimeToMinutes(employee.endHour) : 1 * 60 * 23 ;
         const interval = employee.serviceInterval;
 
         const dayStart = startOfDay(parsedDate);
@@ -105,12 +106,6 @@ export class EmployeeService {
             
             return isEqual(proposedTime, appointmentStart) || isIntersecting;
         });
-    }
-
-    private parseTimeToMinutes(time: string | null): number {
-        if (!time) throw new BadRequestException('Horário inválido');
-        const [hours, minutes] = time.split(':').map(Number);
-        return hours * 60 + minutes;
     }
 
     public async createEmployee(data: Prisma.EmployeeCreateManyInput){
