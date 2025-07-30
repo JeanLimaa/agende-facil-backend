@@ -9,6 +9,7 @@ import { CreateCompanyAddressDTO } from '../company/dto/create-company-address.d
 import { RoleGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/Roles.decorator';
 import { UpdateEmployeeDto } from '../employee/dto/update-employee.dto';
+import { CompanyWorkingHoursDto } from './dto/company-working-hours.dto';
 
 @Roles(['ADMIN'])
 @UseGuards(JwtAuthGuard, RoleGuard)
@@ -47,8 +48,8 @@ export class SettingsController {
     @Put('/company/working-hours')
     async updateCompanyWorkingHours(
         @GetUser("companyId") companyId: number,
-        @Body() body: { dayOfWeek: number; startTime: string; endTime: string; isClosed?: boolean }
+        @Body("working-hours") body: CompanyWorkingHoursDto
     ) {
-        //return this.companyService.updateCompanyWorkingHours(companyId, body);
+        return this.companyService.updateCompanyWorkingHours(companyId, body);
     }
 }

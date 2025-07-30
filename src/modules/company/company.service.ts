@@ -1,9 +1,13 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 import slugify from 'slugify';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import { CreateCompanyAddressDTO } from './dto/create-company-address.dto';
+import { CompanyWorkingHoursDto, DailyWorkingHoursDto } from '../settings/dto/company-working-hours.dto';
+import { isAfter } from 'date-fns';
+import { parseTimeToMinutes } from 'src/common/helpers/time.helper';
+import { dayNames } from 'src/common/helpers/date.helper';
 
 @Injectable()
 export class CompanyService {
@@ -105,7 +109,7 @@ export class CompanyService {
         return company;
     }
 
-    public async createCompanyWorkingHours(companyId: number, data: {dayOfWeek: string, startTime: string, endTime: string}[]) {
+    public async createCompanyWorkingHours(companyId: number, data: DailyWorkingHoursDto[]) {
         return await this.prisma.companyWorkingHour.createMany({
             data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
                 companyId,
@@ -119,33 +123,69 @@ export class CompanyService {
 
     public async updateCompanyWorkingHours(
         companyId: number,
-        data: { dayOfWeek: number; startTime: string; endTime: string; isClosed?: boolean }[]
+        data: CompanyWorkingHoursDto
     ) {
-        const company = await this.prisma.company.findUnique({
+        await this.prisma.company.findUniqueOrThrow({
             where: { id: companyId }
         });
 
-        if (!company) {
-            throw new NotFoundException('Empresa não encontrada');
+        // Atualiza o intervalo entre atendimentos
+        if (data.serviceInterval && data.serviceInterval >= 0) {
+            await this.prisma.company.update({
+                where: {
+                    id: companyId
+                },
+                data: {
+                    intervalBetweenAppointments: data.serviceInterval
+                }
+            });
         }
 
-        const updatedWorkingHours = data.map(hour => ({
-            where: {
-                companyId_dayOfWeek: {
-                    companyId,
-                    dayOfWeek: hour.dayOfWeek
-                }
-            },
-            data: {
-                startTime: hour.startTime,
-                endTime: hour.endTime,
-                isClosed: hour.isClosed ?? false
-            }
-        }));
+        const incomingDays = data.workingHours.map(hour => hour.dayOfWeek);
 
-        return await this.prisma.companyWorkingHour.updateMany({
-            data: updatedWorkingHours
+        // Deleta horários antigos que não estão mais presentes
+        await this.prisma.companyWorkingHour.deleteMany({
+            where: {
+                companyId,
+                dayOfWeek: {
+                    notIn: incomingDays
+                }
+            }
         });
+
+        // Upsert dos horários enviados
+        for (const hour of data.workingHours) {
+            const startTime = parseTimeToMinutes(hour.startTime);
+            const endTime = parseTimeToMinutes(hour.endTime);
+
+            if (startTime && !endTime || !startTime && endTime) {
+                throw new BadRequestException(`Horário inválido para ${dayNames[hour.dayOfWeek]}. Deve ter ambos os horários preenchidos.`);
+            }
+
+            if (isAfter(startTime, endTime)) {
+                throw new BadRequestException(`Horário de início não pode ser após o horário de término para ${dayNames[hour.dayOfWeek]}.`);
+            }
+
+            await this.prisma.companyWorkingHour.upsert({
+                where: {
+                    companyId_dayOfWeek: {
+                        companyId,
+                        dayOfWeek: hour.dayOfWeek
+                    }
+                },
+                update: {
+                    startTime: hour.startTime,
+                    endTime: hour.endTime
+                },
+                create: {
+                    companyId,
+                    dayOfWeek: hour.dayOfWeek,
+                    startTime: hour.startTime,
+                    endTime: hour.endTime
+                }
+            })
+        }
+        return { success: true };
     }
 
     public async updateCompanyProfile(companyId: number, data: UpdateCompanyProfileDto) {
@@ -166,7 +206,7 @@ export class CompanyService {
         return company;
     }
 
-    private async createOrUpdateCompanyAddress(companyId: number, data: CreateCompanyAddressDTO){
+    private async createOrUpdateCompanyAddress(companyId: number, data: CreateCompanyAddressDTO) {
         const company = await this.prisma.company.findUnique({
             where: { id: companyId }
         });
@@ -210,7 +250,7 @@ export class CompanyService {
 
     public async getCompanyInfo(companyId: number) {
         const company = await this.prisma.company.findUniqueOrThrow({
-            where: { id: companyId}
+            where: { id: companyId }
         });
 
         const companyData = {
@@ -238,7 +278,7 @@ export class CompanyService {
             profile: companyData,
             address: companyAddress ? companyAddressData : null,
             schedule: {
-                workingHours: await this.getCompanyWorkingHours(companyId), 
+                workingHours: await this.getCompanyWorkingHours(companyId),
                 serviceInterval: company.intervalBetweenAppointments
             }
         };
@@ -268,7 +308,7 @@ export class CompanyService {
     private async generateUniqueLink(companyName: string): Promise<string> {
         // 1. Transforma o nome da empresa em "slug"
         let baseLink = slugify(companyName, { lower: true, strict: true });
-        
+
         // 2. Verificar se o link já existe no banco de dados
         // caso o link com o nome nao exista, retorna o link
         const linkExists = await this.isLinkExists(baseLink);
