@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, forwardRef, Inject } from '@nestjs/common';
 import { DatabaseService } from 'src/services/Database.service';
 import { CompanyService } from '../company/company.service';
 import { Category, Prisma } from '@prisma/client';
@@ -7,7 +7,8 @@ import { Category, Prisma } from '@prisma/client';
 export class CategoryService {
     constructor(
         private readonly prisma: DatabaseService,
-        private readonly companyService: CompanyService
+        @Inject(forwardRef(() => CompanyService))
+        private readonly companyService: CompanyService,
     ) {}
 
     public async create(name: string, companyId: number): Promise<Omit<Category, 'companyId'>> {
@@ -58,14 +59,34 @@ export class CategoryService {
         return result;
     }
 
-    public async delete(categoryId: number): Promise<void> {
-        if (!categoryId) {
+    public async delete(categoryId: number, moveAppointmentsToCategoryId: number): Promise<void> {
+        const existingCategory = await this.prisma.category.findUnique({
+            where: { id: categoryId }
+        });
+
+        if (!existingCategory) {
             throw new NotFoundException("Categoria não encontrada");
         }
 
+        // Verifica se a categoria de destino existe
+        const targetCategory = await this.prisma.category.findUnique({
+            where: { id: moveAppointmentsToCategoryId }
+        });
+
+        if (!targetCategory) {
+            throw new NotFoundException("Categoria de destino não encontrada");
+        }
+
+        // Move os agendamentos para a nova categoria
+        await this.prisma.appointment.updateMany({
+            where: { id: categoryId },
+            data: { id: moveAppointmentsToCategoryId }
+        });
+
+        // Deleta a categoria 
         await this.prisma.category.delete({
             where: {
-                id: Number(categoryId)
+                id: categoryId
             }
         });
     }

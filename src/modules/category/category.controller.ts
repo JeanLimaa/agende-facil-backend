@@ -3,16 +3,18 @@ import { CategoryService } from './category.service';
 import { GetUser } from 'src/common/decorators/GetUser.decorator';
 import { CreateCategoryDTO } from './dto/create-category.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { CompanyService } from '../company/company.service';
 import { ParseIntPipe } from '@nestjs/common';
+import { SkipAuth } from 'src/common/decorators/SkipAuth.decorator';
 
+
+@UseGuards(JwtAuthGuard)
 @Controller('category')
 export class CategoryController {
     constructor(
-        private readonly categoryService: CategoryService,
-        private readonly company: CompanyService,
+        private readonly categoryService: CategoryService
     ) {}
 
+    @SkipAuth()
     @Get("/list/:companyLinkName")
     public async listByCompany(
         @Param('companyLinkName') companyLinkName: string,
@@ -20,7 +22,6 @@ export class CategoryController {
         return await this.categoryService.listByCompany(companyLinkName);
     }
 
-    @UseGuards(JwtAuthGuard)
     @Get("/list-all")
     public async listAll(
         @GetUser("companyId") companyId: number,
@@ -28,17 +29,14 @@ export class CategoryController {
         return await this.categoryService.listAllFromCompany(companyId);
     }
 
-    @UseGuards(JwtAuthGuard)
     @Post()
     public async create(
-        @GetUser("userId") userId: number,
-        @Body() body: CreateCategoryDTO,
+        @GetUser("companyId") companyId: number,
+        @Body("category-details") body: CreateCategoryDTO,
     ){
-        const companyId = await this.company.findCompanyIdByUserId(userId);
         return await this.categoryService.create(body.name, companyId);
     }
 
-    @UseGuards(JwtAuthGuard)
     @Get(":id")
     public async get(
         @Param('id', ParseIntPipe) id: number,
@@ -46,20 +44,19 @@ export class CategoryController {
         return await this.categoryService.getCategoryById(id);
     }
 
-    @UseGuards(JwtAuthGuard)
     @Put(":id")
     public async update(
         @Param('id', ParseIntPipe) id: number,
-        @Body() body: CreateCategoryDTO,
+        @Body("category-details") body: CreateCategoryDTO,
     ){
         return await this.categoryService.update(id, body.name);
     }
 
-    @UseGuards(JwtAuthGuard)
     @Delete(":id")
     public async delete(
         @Param('id', ParseIntPipe) id: number,
+        @Body('moveAppointmentsToCategoryId', ParseIntPipe) moveAppointmentsToCategoryId: number
     ){
-        return await this.categoryService.delete(id);
+        return await this.categoryService.delete(id, moveAppointmentsToCategoryId);
     }
 }
