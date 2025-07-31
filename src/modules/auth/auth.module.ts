@@ -9,6 +9,10 @@ import { DatabaseService } from 'src/services/Database.service';
 import { CompanyService } from '../company/company.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { EmployeeService } from '../employee/employee.service';
+import { UserModule } from '../user/user.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
+import { EmployeeModule } from '../employee/employee.module';
+import { CompanyModule } from '../company/company.module';
 
 @Module({
   imports: [
@@ -17,18 +21,17 @@ import { EmployeeService } from '../employee/employee.service';
       secret: process.env.JWT_SECRET || 'secretKey', // Chave secreta
       signOptions: { expiresIn: '1h' }, // Expiração do token
     }),
+    UserModule,
+    CompanyModule,
+    SubscriptionModule,
+    EmployeeModule,
   ],
   controllers: [AuthController],
   providers: [
     AuthService, 
     JwtStrategy, 
     UserService, 
-    DatabaseService, 
-    CompanyService, 
-    DatabaseService, 
-    CompanyService,
-    SubscriptionService,
-    EmployeeService
+    DatabaseService
   ],
   exports: [AuthService],
 })
