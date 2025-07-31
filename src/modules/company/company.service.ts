@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 import slugify from 'slugify';
@@ -8,11 +8,14 @@ import { CompanyWorkingHoursDto, DailyWorkingHoursDto } from '../settings/dto/co
 import { isAfter } from 'date-fns';
 import { parseTimeToMinutes } from 'src/common/helpers/time.helper';
 import { dayNames } from 'src/common/helpers/date.helper';
+import { CategoryService } from '../category/category.service';
 
 @Injectable()
 export class CompanyService {
     constructor(
         private readonly prisma: DatabaseService,
+        @Inject(forwardRef(() => CategoryService))
+        private readonly categoryService: CategoryService,
     ) { }
 
     public async createCompany(
@@ -41,6 +44,12 @@ export class CompanyService {
                 link
             }
         });
+
+        // popular workings hours iniciais
+        await this.createInitialCompanyWorkingHours(company.id);
+
+        // criar categoria "Padrão" inicial;
+        await this.categoryService.create("Padrão", company.id);
 
         return company;
     }
@@ -109,14 +118,19 @@ export class CompanyService {
         return company;
     }
 
-    public async createCompanyWorkingHours(companyId: number, data: DailyWorkingHoursDto[]) {
+    private async createInitialCompanyWorkingHours(companyId: number) {
+        const data: DailyWorkingHoursDto[] = Array.from({ length: 5 }, (_, i) => ({
+            dayOfWeek: i + 1, // 1 a 5 (segunda a sexta)
+            startTime: '08:00',
+            endTime: '17:00'
+        }));
+
         return await this.prisma.companyWorkingHour.createMany({
-            data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+            data: data.map(hour => ({
                 companyId,
-                isClosed: false,
-                dayOfWeek,
-                startTime: data[dayOfWeek].startTime,
-                endTime: data[dayOfWeek].endTime
+                dayOfWeek: hour.dayOfWeek,
+                startTime: hour.startTime,
+                endTime: hour.endTime
             })),
         });
     }
