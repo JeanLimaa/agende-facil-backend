@@ -77,6 +77,10 @@ export class CategoryService {
             throw new NotFoundException("Categoria de destino não encontrada");
         }
 
+        if(categoryId === moveAppointmentsToCategoryId){
+            throw new ConflictException("Não é possível mover uma categoria para a mesma categoria");
+        }
+
         // Move os agendamentos para a nova categoria
         await this.prisma.appointment.updateMany({
             where: { id: categoryId },
