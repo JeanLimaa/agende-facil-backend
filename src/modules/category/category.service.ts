@@ -59,7 +59,7 @@ export class CategoryService {
         return result;
     }
 
-    public async delete(categoryId: number, moveAppointmentsToCategoryId: number): Promise<void> {
+    public async delete(categoryId: number, moveAppointmentsToCategoryId: number, companyId: number): Promise<void> {
         const existingCategory = await this.prisma.category.findUnique({
             where: { id: categoryId }
         });
@@ -79,6 +79,10 @@ export class CategoryService {
 
         if(categoryId === moveAppointmentsToCategoryId){
             throw new ConflictException("Não é possível mover uma categoria para a mesma categoria");
+        }
+
+        if(existingCategory.companyId !== targetCategory.companyId || companyId !== existingCategory.companyId){
+            throw new ConflictException("Não é possível mover agendamentos para uma categoria de outra empresa");
         }
 
         // Move os agendamentos para a nova categoria

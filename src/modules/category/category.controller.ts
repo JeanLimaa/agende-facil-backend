@@ -55,8 +55,9 @@ export class CategoryController {
     @Delete(":id")
     public async delete(
         @Param('id', ParseIntPipe) id: number,
-        @Body('moveAppointmentsToCategoryId', ParseIntPipe) moveAppointmentsToCategoryId: number
+        @Body('moveAppointmentsToCategoryId', ParseIntPipe) moveAppointmentsToCategoryId: number,
+        @GetUser("companyId") companyId: number,
     ){
-        return await this.categoryService.delete(id, moveAppointmentsToCategoryId);
+        return await this.categoryService.delete(id, moveAppointmentsToCategoryId, companyId);
     }
 }
