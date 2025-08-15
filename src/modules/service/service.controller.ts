@@ -7,7 +7,7 @@ import { UpdateServiceDTO } from './dto/update-service.dto';
 import { ParseIntPipe } from '@nestjs/common';
 import { GetUser } from 'src/common/decorators/GetUser.decorator';
 
-@Controller('service')
+@Controller('services')
 export class ServiceController {
     constructor(
         private readonly serviceService: ServiceService,
@@ -55,10 +55,17 @@ export class ServiceController {
     }
 
     @UseGuards(JwtAuthGuard)
-    @Get("/list-all")
+    @Get()
     public async listAll(
         @GetUser("companyId") companyId: number,
     ){
         return await this.serviceService.listByCompanyId(companyId);
+    }
+
+    @Get(":id")
+    public async getById(
+        @Param('id', ParseIntPipe) id: number,
+    ){
+        return await this.serviceService.getById(id);
     }
 }

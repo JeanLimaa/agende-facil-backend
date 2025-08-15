@@ -62,4 +62,10 @@ export class ServiceService {
             }
         )
     }
+
+    public async getById(id: number): Promise<Service> {
+        return await this.prisma.service.findUniqueOrThrow({
+            where: { id }
+        });
+    }
 }
