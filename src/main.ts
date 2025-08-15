@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { BadRequestException, Logger, ValidationError, ValidationPipe } from '@nestjs/common';
+import { PrismaNotFoundExceptionFilter } from './common/filters/prisma-not-found.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,7 +10,7 @@ async function bootstrap() {
 
   const logger = new Logger();
   logger.log(`Server running on http://localhost:${process.env.PORT ?? 3000}`);
-  
+
   app.useGlobalPipes(
     new ValidationPipe({
       stopAtFirstError: true,
@@ -20,6 +21,8 @@ async function bootstrap() {
         return new BadRequestException(firstError);
       },
     }));
+
+  app.useGlobalFilters(new PrismaNotFoundExceptionFilter());
 
   await app.listen(process.env.PORT ?? 3000);
 }
