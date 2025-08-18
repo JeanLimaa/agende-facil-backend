@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsOptional, IsPhoneNumber, IsString, MinLength, ValidateNested } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsPhoneNumber, IsString, Matches, MinLength, ValidateNested } from 'class-validator';
 
 class EmployeeProfile {
     @IsString({ message: 'O nome deve ser uma string' })
@@ -24,14 +24,29 @@ class EmployeeProfile {
 }
 
 class EmployeeWorkingHours {
-    @IsString({ message: 'O horário de início deve ser uma string no formato HH:mm' })
-    startTime: string;
+  @Matches(/^([0-1]\d|2[0-3]):([0-5]\d)$/, {
+    message: 'O horário de início deve estar no formato HH:mm',
+  })
+  startTime: string;
 
-    @IsString({ message: 'O horário de término deve ser uma string no formato HH:mm' })
-    endTime: string;
+  @Matches(/^([0-1]\d|2[0-3]):([0-5]\d)$/, {
+    message: 'O horário de término deve estar no formato HH:mm',
+  })
+  endTime: string;
 
-    @IsBoolean({ message: 'O campo isClosed deve ser um booleano' })
-    isClosed: boolean = false;
+  @IsNumber({}, { message: 'O campo dayOfWeek deve ser um número (0-6)' })
+  dayOfWeek: number;
+}
+
+class WorkingHoursWrapper {
+  @IsNumber({}, { message: 'O campo serviceInterval deve ser um número' })
+  @IsOptional()
+  serviceInterval: number;
+
+  @ValidateNested({ each: true })
+  @Type(() => EmployeeWorkingHours)
+  @IsOptional()
+  workingHours: EmployeeWorkingHours[];
 }
 
 export class CreateEmployeeDto {
@@ -40,7 +55,7 @@ export class CreateEmployeeDto {
   profile: EmployeeProfile;
 
   @IsOptional()
-  @ValidateNested({ each: true })
-  @Type(() => EmployeeWorkingHours)
-  workingHours?: EmployeeWorkingHours[];
+  @ValidateNested()
+  @Type(() => WorkingHoursWrapper)
+  workingHours?: WorkingHoursWrapper;
 }
