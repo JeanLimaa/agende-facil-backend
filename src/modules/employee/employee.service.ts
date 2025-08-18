@@ -131,9 +131,9 @@ export class EmployeeService {
             profileImageUrl: dto.profile.profileImageUrl || null,
         });
 
-        if(dto.workingHours && dto.workingHours.length > 0) {
-            const workingHoursData = Object.keys(dto.workingHours).map(dayOfWeek => {
-                const wh = dto.workingHours[dayOfWeek];
+        if(dto.workingHours.workingHours && dto.workingHours.workingHours.length > 0) {
+            const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
+                const wh = dto.workingHours.workingHours[dayOfWeek];
                 return {
                     employeeId: employee.id,
                     dayOfWeek: Number(dayOfWeek),
