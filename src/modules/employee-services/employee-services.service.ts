@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/Database.service';
 import { EmployeeService } from '../employee/employee.service';
-import { EmployeeCategoryDTO } from './dto/create-employee-service.dto';
+import { EmployeeServicesDTO } from './dto/create-employee-service.dto';
 
 @Injectable()
 export class EmployeeServicesService {
@@ -10,31 +10,31 @@ export class EmployeeServicesService {
         private readonly employeeService: EmployeeService,
     ) {}
 
-    public async createMany(employeeServicePairs: EmployeeCategoryDTO) {
+    public async createMany(employeeServicePairs: EmployeeServicesDTO) {
         const employeeId = employeeServicePairs.employeeId;
 
         await this.employeeService.getOrThrowEmployeeById(employeeId);
 
-        // Verificar se todos os categoryIds existem
-        const categoryIds = employeeServicePairs.categorys.map(pair => pair.categoryId);
-        const existingCategories = await this.prisma.category.findMany({
+        // Verificar se todos os serviceIds existem
+        const serviceIds = employeeServicePairs.services.map(pair => pair.serviceId);
+        const existingServices = await this.prisma.service.findMany({
             where: {
             id: {
-                in: categoryIds,
+                in: serviceIds,
             },
             },
         });
 
-        if (existingCategories.length !== categoryIds.length) {
-            throw new NotFoundException('Um ou mais categoryIds não existem na tabela Category.');
+        if (existingServices.length !== serviceIds.length) {
+            throw new NotFoundException('Um ou mais serviceIds não existem na tabela Service.');
         }
 
-        const createPromises = employeeServicePairs.categorys.map(async pair => {
-            const existingRelation = await this.prisma.employeeCategory.findUnique({
+        const createPromises = employeeServicePairs.services.map(async pair => {
+            const existingRelation = await this.prisma.employeeServices.findUnique({
                 where: {
-                    employeeId_categoryId: {
+                    employeeId_serviceId: {
                         employeeId: employeeId,
-                        categoryId: pair.categoryId,
+                        serviceId: pair.serviceId,
                     },
                 },
             });
@@ -43,10 +43,10 @@ export class EmployeeServicesService {
                 throw new ConflictException('Relação entre funcionário e serviço já existe');
             }
             
-            return await this.prisma.employeeCategory.create({
+            return await this.prisma.employeeServices.create({
                 data: {
                     employeeId: employeeId,
-                    categoryId: pair.categoryId,
+                    serviceId: pair.serviceId,
                 },
             });
         });
@@ -54,25 +54,25 @@ export class EmployeeServicesService {
         return await Promise.all(createPromises);
     }
 
-    public async deleteMany(employeeServicePairs: EmployeeCategoryDTO) {
+    public async deleteMany(employeeServicePairs: EmployeeServicesDTO) {
         const employeeId = employeeServicePairs.employeeId;
 
         await this.employeeService.getOrThrowEmployeeById(employeeId);
 
-        const deletePromises = employeeServicePairs.categorys.map(pair => 
-            this.prisma.employeeCategory.deleteMany({
+        const deletePromises = employeeServicePairs.services.map(pair => 
+            this.prisma.employeeServices.deleteMany({
                 where: {
                     employeeId: employeeId,
-                    categoryId: pair.categoryId,
+                    serviceId: pair.serviceId,
                 },
             })
         );
         return await Promise.all(deletePromises);
     }
 
-    public async listAllEmployeeToCategory(categoryId: number) {
-        const employeeServices = await this.prisma.employeeCategory.findMany({
-            where: { categoryId },
+    public async listAllEmployeeToService(serviceId: number) {
+        const employeeServices = await this.prisma.employeeServices.findMany({
+            where: { serviceId },
             include: { employee: true }
         });
 

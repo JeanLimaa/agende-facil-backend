@@ -4,7 +4,7 @@ import { JwtAuthGuard } from "src/common/guards/jwt-auth.guard";
 import { Role } from "@prisma/client";
 import { Roles } from "src/common/decorators/Roles.decorator";
 import { RoleGuard } from "src/common/guards/roles.guard";
-import { EmployeeCategoryDTO } from "./dto/create-employee-service.dto";
+import { EmployeeServicesDTO } from "./dto/create-employee-service.dto";
 
 @Controller('employee-services')
 export class EmployeeServicesController {
@@ -15,20 +15,20 @@ export class EmployeeServicesController {
     @Roles([Role.ADMIN])
     @UseGuards(JwtAuthGuard, RoleGuard)
     @Post()
-    async create(@Body() createEmployeeCategoryDTO: EmployeeCategoryDTO) {
+    async create(@Body() createEmployeeCategoryDTO: EmployeeServicesDTO) {
         return await this.employeeServicesService.createMany(createEmployeeCategoryDTO);
     }
 
     @Roles([Role.ADMIN])
     @UseGuards(JwtAuthGuard, RoleGuard)
     @Delete()
-    async delete(@Body() createEmployeeCategoryDTO: EmployeeCategoryDTO) {
+    async delete(@Body() createEmployeeCategoryDTO: EmployeeServicesDTO) {
         return await this.employeeServicesService.deleteMany(createEmployeeCategoryDTO);
     }
 
-    @Get('list/:categoryId')
-    async listAllEmployeeToCategory(@Param('categoryId', ParseIntPipe) categoryId: number) {
-        return await this.employeeServicesService.listAllEmployeeToCategory(categoryId);
+    @Get('list/:serviceId')
+    async listAllEmployeeToService(@Param('serviceId', ParseIntPipe) serviceId: number) {
+        return await this.employeeServicesService.listAllEmployeeToService(serviceId);
     }
 
 /*     @Get('list-by-category/:categoryId')
