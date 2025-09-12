@@ -76,17 +76,17 @@ async function main() {
         },
     });
 
-    const employeeCategory1 = await prisma.employeeCategory.create({
+    const employeeServices1 = await prisma.employeeServices.create({
         data: {
             employeeId: employee.id,
-            categoryId: category1.id,
+            serviceId: service1.id,
         },
     });
 
-    const employeeCategory2 = await prisma.employeeCategory.create({
+    const employeeServices2 = await prisma.employeeServices.create({
         data: {
             employeeId: employee.id,
-            categoryId: category2.id,
+            serviceId: service2.id,
         },
     });
 
