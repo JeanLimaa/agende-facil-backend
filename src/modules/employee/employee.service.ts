@@ -189,4 +189,13 @@ export class EmployeeService {
             }
         });
     }
+
+    public async servicesAttendedByProfessional(employeeId: number) {
+        return await this.prisma.employeeServices.findMany({
+            where: { employeeId },
+            include: {
+                service: true
+            }
+        });
+    }
 }

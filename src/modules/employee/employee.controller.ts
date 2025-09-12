@@ -45,6 +45,11 @@ export class EmployeeController {
     return await this.employeeService.listByCompanyId(companyId);
   }
 
+  @Get('/:employeeId/services')
+  async servicesAttendedByProfessional(@Param('employeeId', ParseIntPipe) employeeId: number) {
+    return await this.employeeService.servicesAttendedByProfessional(employeeId);
+  }
+
   @Roles(['ADMIN'])
   @Post()
   async registerEmployee(
