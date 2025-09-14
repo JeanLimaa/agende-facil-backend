@@ -13,6 +13,7 @@ import { UserModule } from '../user/user.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 import { EmployeeModule } from '../employee/employee.module';
 import { CompanyModule } from '../company/company.module';
+import { CategoryModule } from '../category/category.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CompanyModule } from '../company/company.module';
     CompanyModule,
     SubscriptionModule,
     EmployeeModule,
+    CategoryModule
   ],
   controllers: [AuthController],
   providers: [

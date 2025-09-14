@@ -11,6 +11,7 @@ import { SubscriptionService } from '../subscription/subscription.service';
 import { DatabaseService } from 'src/services/Database.service';
 import { UserPayload } from './interfaces/UserPayload.interface';
 import { EmployeeService } from '../employee/employee.service';
+import { CategoryService } from '../category/category.service';
 
 @Injectable()
 export class AuthService {
@@ -20,7 +21,8 @@ export class AuthService {
     private readonly companyService: CompanyService,
     private readonly subscriptionService: SubscriptionService,
     private readonly prisma: DatabaseService,
-    private readonly employeeService: EmployeeService
+    private readonly employeeService: EmployeeService,
+    private readonly categoryService: CategoryService,
   ) {}
 
   private async validateUser(email: string, password: string): Promise<Omit<User, "password">> {
@@ -104,6 +106,9 @@ export class AuthService {
 
     // Update the user with the employeeId
     const userUpdated = await this.userService.update(newUser.id, { employeeId: employee.id });
+
+    // Criar uma categoria padrão para a empresa
+    await this.categoryService.create('Padrão', newCompany.id);
 
     const payload: UserPayload = { 
       userId: userUpdated.id,
