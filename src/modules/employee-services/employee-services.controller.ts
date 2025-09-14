@@ -25,14 +25,4 @@ export class EmployeeServicesController {
     async delete(@Body() createEmployeeCategoryDTO: EmployeeServicesDTO) {
         return await this.employeeServicesService.deleteMany(createEmployeeCategoryDTO);
     }
-
-    @Get('list/:serviceId')
-    async listAllEmployeeToService(@Param('serviceId', ParseIntPipe) serviceId: number) {
-        return await this.employeeServicesService.listAllEmployeeToService(serviceId);
-    }
-
-/*     @Get('list-by-category/:categoryId')
-    async listByCategory(@Param('categoryId', ParseIntPipe) categoryId: number) {
-        return await this.employeeServicesService.listByCategory(categoryId);
-    } */
 }

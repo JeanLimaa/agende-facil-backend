@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { Prisma, Status } from '@prisma/client';
+import { EmployeeWorkingHour, Prisma, Status } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
 import { format, isBefore, isAfter, addMinutes, startOfDay, endOfDay, parseISO, isEqual } from 'date-fns';
@@ -19,7 +19,11 @@ export class EmployeeService {
 
     public async getOrThrowEmployeeById(employeeId: number) {
         const employee = await this.prisma.employee.findUnique({
-            where: { id: employeeId }
+            where: { id: employeeId },
+            include: {
+                workingHours: true,
+                employeeServices: { select: { service: true } }
+            }
         });
 
         if (!employee) {
@@ -33,6 +37,10 @@ export class EmployeeService {
         return await this.prisma.employee.findMany({
             where: { companyId, isActive: true },
             orderBy: { name: 'asc' },
+            include: {
+                workingHours: true,
+                employeeServices: { select: { service: true } }
+            }
         });
     }
 
@@ -168,8 +176,29 @@ export class EmployeeService {
                 displayOnline: dto.profile.displayOnline,
                 position: dto.profile.position,
                 profileImageUrl: dto.profile.profileImageUrl || null,
+                serviceInterval: dto.workingHours.serviceInterval,
             },
         });
+
+        if(dto.workingHours.workingHours && dto.workingHours.workingHours.length > 0) {
+            // Deletar os horários de trabalho existentes
+            await this.prisma.employeeWorkingHour.deleteMany({
+                where: { employeeId }
+            });
+            const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
+                const wh: EmployeeWorkingHour = dto.workingHours.workingHours[dayOfWeek];
+                return {
+                    employeeId,
+                    dayOfWeek: Number(dayOfWeek),
+                    startTime: wh.startTime,
+                    endTime: wh.endTime
+                };
+            });
+
+            await this.prisma.employeeWorkingHour.createMany({
+                data: workingHoursData
+            });
+        }
 
         return updatedEmployee;
     }
