@@ -15,14 +15,14 @@ export class CategoryController {
     ) {}
 
     @SkipAuth()
-    @Get("/list/:companyLinkName")
+    @Get("/company/:companyLinkName")
     public async listByCompany(
         @Param('companyLinkName') companyLinkName: string,
     ){
         return await this.categoryService.listByCompany(companyLinkName);
     }
 
-    @Get("/list-all")
+    @Get()
     public async listAll(
         @GetUser("companyId") companyId: number,
     ){
