@@ -19,8 +19,7 @@ export class ServiceController {
         @Body() body: CreateServiceDTO,
         @GetUser("companyId") companyId: number,
     ){
-        body.companyId = companyId;
-        return await this.serviceService.create(body);
+        return await this.serviceService.create(body, companyId);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -28,8 +27,9 @@ export class ServiceController {
     public async update(
         @Param('id', ParseIntPipe) id: number,
         @Body() body: UpdateServiceDTO,
+        @GetUser("companyId") companyId: number,
     ){
-        return await this.serviceService.update(id, body);
+        return await this.serviceService.update(id, body, companyId);
     }
 
     @UseGuards(JwtAuthGuard)

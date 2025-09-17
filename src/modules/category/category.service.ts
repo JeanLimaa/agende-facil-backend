@@ -85,10 +85,10 @@ export class CategoryService {
             throw new ConflictException("Não é possível mover agendamentos para uma categoria de outra empresa");
         }
 
-        // Move os agendamentos para a nova categoria
-        await this.prisma.appointment.updateMany({
-            where: { id: categoryId },
-            data: { id: moveAppointmentsToCategoryId }
+        // Move os serviços para a nova categoria
+        await this.prisma.service.updateMany({
+            where: { categoryId },
+            data: { categoryId: moveAppointmentsToCategoryId }
         });
 
         // Deleta a categoria 

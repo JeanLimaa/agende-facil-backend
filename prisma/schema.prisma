@@ -143,6 +143,9 @@ model Service {
   categoryId   Int
   category     Category @relation(fields: [categoryId], references: [id])
 
+  deletedAt DateTime? // Marca se o serviço foi deletado (soft delete)
+  isActive Boolean @default(true) // Indica se o serviço está ativo
+
   @@map("services")
 }
 
@@ -313,7 +316,7 @@ model EmployeeWorkingHour {
   dayOfWeek      Int
   startTime      String
   endTime        String
-  isClosed       Boolean      @default(false)
+  
   employeeId Int
   employee   Employee @relation(fields: [employeeId], references: [id])
 

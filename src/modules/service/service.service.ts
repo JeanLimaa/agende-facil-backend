@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, Service } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 import { CategoryService } from '../category/category.service';
+import { CreateServiceDTO } from './dto/create-service.dto';
+import { UpdateServiceDTO } from './dto/update-service.dto';
 
 @Injectable()
 export class ServiceService {
@@ -10,11 +12,11 @@ export class ServiceService {
         private readonly categoriesService: CategoryService
     ) {}
 
-    public async create(data: Prisma.ServiceCreateManyInput): Promise<Prisma.ServiceCreateManyInput> {
+    public async create(data: CreateServiceDTO, companyId: number): Promise<Service> {
         const existingService = await this.prisma.service.findFirst({
             where: {
-                name: data.name,
-                companyId: data.companyId
+                name: data.details.name,
+                companyId
             }
         });
 
@@ -22,18 +24,22 @@ export class ServiceService {
             throw new BadRequestException('Serviço com esse nome já existe');
         }
 
-        const existCategory = await this.categoriesService.getCategoryById(data.categoryId);
+        const existCategory = await this.categoriesService.getCategoryById(data.details.categoryId);
 
         if (!existCategory) {
             throw new BadRequestException('Categoria não encontrada');
         }
 
         return await this.prisma.service.create({
-            data
+            data: {
+                ...data.details,
+                ...data.pricing,
+                companyId
+            }
         });
     }
 
-    public async update(id: number, data: Prisma.ServiceUncheckedUpdateManyInput): Promise<Prisma.ServiceUncheckedUpdateManyInput> {
+    public async update(id: number, data: UpdateServiceDTO, companyId: number): Promise<Service> {
         const service = await this.prisma.service.findUnique({
             where: { id }
         })
@@ -41,10 +47,23 @@ export class ServiceService {
         if (!service) {
             throw new NotFoundException('Serviço não encontrado');
         }
+
+        const existCategory = await this.categoriesService.getCategoryById(data.details.categoryId);
+
+        if (!existCategory) {
+            throw new BadRequestException('Categoria não encontrada');
+        }
+
+        if(service.companyId !== companyId) {
+            throw new BadRequestException('Você não tem permissão para editar este serviço');
+        }
         
         return await this.prisma.service.update({
             where: { id },
-            data,
+            data: {
+                ...data.details,
+                ...data.pricing
+            },
         });
     }
 
@@ -57,8 +76,12 @@ export class ServiceService {
             throw new NotFoundException('Serviço não encontrado');
         }
 
-        return await this.prisma.service.delete({
-            where: { id }
+        return await this.prisma.service.update({
+            where: { id },
+            data: {
+                deletedAt: new Date(),
+                isActive: false
+            }
         });
     }
 
@@ -66,7 +89,7 @@ export class ServiceService {
         return await this.prisma.service.findMany(
             {
                 where: {
-                    companyId: companyId
+                    companyId: companyId, isActive: true
             }
         }
         );
@@ -76,7 +99,7 @@ export class ServiceService {
         return await this.prisma.service.findMany(
             {
                 where: {
-                    categoryId: categoryId
+                    categoryId: categoryId, isActive: true
                 }
             }
         )
@@ -84,7 +107,7 @@ export class ServiceService {
 
     public async getById(id: number): Promise<Service> {
         return await this.prisma.service.findUniqueOrThrow({
-            where: { id }
+            where: { id, isActive: true }
         });
     }
 }
