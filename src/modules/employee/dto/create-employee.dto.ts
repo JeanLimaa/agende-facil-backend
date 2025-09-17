@@ -38,6 +38,11 @@ class EmployeeWorkingHours {
   dayOfWeek: number;
 }
 
+class EmployeeServices {
+  @IsNumber({}, { message: 'O campo serviceId deve ser um número' })
+  serviceId: number;
+}
+
 class WorkingHoursWrapper {
   @IsNumber({}, { message: 'O campo serviceInterval deve ser um número' })
   @IsOptional()
@@ -58,4 +63,9 @@ export class CreateEmployeeDto {
   @ValidateNested()
   @Type(() => WorkingHoursWrapper)
   workingHours?: WorkingHoursWrapper;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => EmployeeServices)
+  employeeServices?: EmployeeServices[];
 }

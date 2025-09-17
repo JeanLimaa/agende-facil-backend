@@ -200,6 +200,20 @@ export class EmployeeService {
             });
         }
 
+        if(dto.employeeServices && dto.employeeServices.length > 0) {
+            await this.prisma.employeeServices.deleteMany({
+                where: { employeeId }
+            });
+
+            const employeeServicesData = dto.employeeServices.map(es => ({
+                employeeId,
+                serviceId: es.serviceId
+            }));
+            await this.prisma.employeeServices.createMany({
+                data: employeeServicesData
+            });
+        }
+
         return updatedEmployee;
     }
 
