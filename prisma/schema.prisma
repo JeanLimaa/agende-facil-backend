@@ -321,6 +321,8 @@ model EmployeeWorkingHour {
   employee   Employee @relation(fields: [employeeId], references: [id])
 
   @@map("employee_working_hours")
+
+  @@unique([employeeId, dayOfWeek])
 }
 
 model CompanyWorkingHour {
