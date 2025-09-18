@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, InternalServerErrorException, HttpException, Logger } from '@nestjs/common';
 import { DatabaseService } from 'src/services/Database.service';
 import { Appointment, Role, Status } from '@prisma/client';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -18,7 +18,7 @@ const statusTranslation = {
 export class AppointmentService {
   constructor(
     private readonly prisma: DatabaseService,
-    private readonly employeeService: EmployeeService,
+    private readonly employeeService: EmployeeService
   ) {}
 
   public async createAppointment(data: CreateAppointmentDto, role: Role): Promise<Appointment> {
@@ -254,71 +254,81 @@ export class AppointmentService {
   }
 
   private async prepareAppointmentData(data: CreateAppointmentDto, role: Role) {
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: data.employeeId },
-    });
-
-    if (!employee) {
-      throw new BadRequestException('Funcionário não encontrado.');
-    }
-
-    if (employee.startHour && employee.endHour) {
-      const appointmentDate = parseISO(data.date);
-      const startHour = set(appointmentDate, {
-        hours: parseInt(employee.startHour.split(':')[0], 10),
-        minutes: parseInt(employee.startHour.split(':')[1], 10),
-        seconds: 0,
+    try {
+      
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: data.employeeId },
       });
-
-      const endHour = set(appointmentDate, {
-        hours: parseInt(employee.endHour.split(':')[0], 10),
-        minutes: parseInt(employee.endHour.split(':')[1], 10),
-        seconds: 0,
-      });
-
-      if (isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
-        throw new BadRequestException('Funcionário não atende nesse horário.');
+  
+      if (!employee) {
+        throw new BadRequestException('Funcionário não encontrado.');
       }
+  
+      if (employee.startHour && employee.endHour) {
+        const appointmentDate = parseISO(data.date);
+        const startHour = set(appointmentDate, {
+          hours: parseInt(employee.startHour.split(':')[0], 10),
+          minutes: parseInt(employee.startHour.split(':')[1], 10),
+          seconds: 0,
+        });
+  
+        const endHour = set(appointmentDate, {
+          hours: parseInt(employee.endHour.split(':')[0], 10),
+          minutes: parseInt(employee.endHour.split(':')[1], 10),
+          seconds: 0,
+        });
+  
+        if (isBefore(appointmentDate, startHour) || isAfter(appointmentDate, endHour)) {
+          throw new BadRequestException('Funcionário não atende nesse horário.');
+        }
+      }
+  
+      const isAvailable = await this.employeeService.isTimeAvailable(
+        data.employeeId,
+        parseISO(data.date),
+        employee.serviceInterval,
+        true
+      ); 
+  
+      if (!isAvailable) {
+        throw new BadRequestException('Funcionário não está disponível nesse horário.');
+      }
+  
+      const services = await this.prisma.service.findMany({
+        where: {
+          id: { in: data.serviceId },
+        },
+      });
+      console.log('Services found:', services);
+      const subTotalPrice = sumByProp(services, 'price');
+      console.log('SubTotalPrice calculated:', subTotalPrice);
+      const discount = (role === Role.ADMIN || role === Role.EMPLOYEE) ? data.discount : 0;
+  
+      if (discount > subTotalPrice) {
+        throw new BadRequestException('Desconto não pode ser maior que o valor total.');
+      }
+  
+      if (discount < 0) {
+        throw new BadRequestException('Desconto não pode ser negativo.');
+      }
+      
+      return {
+        date: data.date,
+        clientId: data.clientId,
+        employeeId: data.employeeId,
+        totalDuration: sumByProp(services, 'duration'),
+        subTotalPrice,
+        discount,
+        totalPrice: subTotalPrice - discount,
+        status: Status.PENDING,
+      };
+    } catch (error) {
+      if(error instanceof HttpException) {
+        throw error;
+      }
+      
+      throw new InternalServerErrorException('Erro ao preparar dados do agendamento.');
     }
-
-    const isAvailable = await this.employeeService.isTimeAvailable(
-      data.employeeId,
-      parseISO(data.date),
-      employee.serviceInterval,
-      true
-    ); 
-
-    if (!isAvailable) {
-      throw new BadRequestException('Funcionário não está disponível nesse horário.');
-    }
-
-    const servicos = await this.prisma.service.findMany({
-      where: {
-        id: { in: data.serviceId },
-      },
-    });
-
-    const subTotalPrice = sumByProp(servicos, 'price');
-    const discount = (role === Role.ADMIN || role === Role.EMPLOYEE) ? data.discount : 0;
-
-    if (discount > subTotalPrice) {
-      throw new BadRequestException('Desconto não pode ser maior que o valor total.');
-    }
-
-    if (discount < 0) {
-      throw new BadRequestException('Desconto não pode ser negativo.');
-    }
-
-    return {
-      date: data.date,
-      clientId: data.clientId,
-      employeeId: data.employeeId,
-      totalDuration: sumByProp(servicos, 'duration'),
-      subTotalPrice,
-      discount,
-      totalPrice: subTotalPrice - discount,
-      status: Status.PENDING,
-    };
   }
 
   public async findAllByClient(clientId: number, companyId: number) {
