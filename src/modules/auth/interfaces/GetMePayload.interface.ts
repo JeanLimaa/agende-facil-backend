@@ -1,4 +1,4 @@
-interface GetMePayload {
+export interface GetMePayload {
     email: string;
     name: string;
     phone: string;

@@ -10,8 +10,10 @@ import { CompanyService } from '../company/company.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import { DatabaseService } from 'src/services/Database.service';
 import { UserPayload } from './interfaces/UserPayload.interface';
+import { GetMePayload } from './interfaces/GetMePayload.interface';
 import { EmployeeService } from '../employee/employee.service';
 import { CategoryService } from '../category/category.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -144,5 +146,40 @@ export class AuthService {
     };
 
     return payload;
+  }
+
+  public async changePassword(userId: number, changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
+    const { currentPassword, newPassword, confirmPassword } = changePasswordDto;
+
+    // Verificar se a nova senha e confirmação são iguais
+    if (newPassword !== confirmPassword) {
+      throw new UnauthorizedException('A nova senha e confirmação devem ser iguais');
+    }
+
+    // Buscar o usuário
+    const user = await this.userService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('Usuário não encontrado');
+    }
+
+    // Verificar se a senha atual está correta
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    // Verificar se a nova senha é diferente da atual
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      throw new UnauthorizedException('A nova senha deve ser diferente da senha atual');
+    }
+
+    // Criptografar a nova senha
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    // Atualizar a senha no banco de dados
+    await this.userService.update(userId, { password: hashedNewPassword });
+
+    return { message: 'Senha atualizada com sucesso' };
   }
 }
