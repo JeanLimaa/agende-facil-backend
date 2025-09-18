@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import { IsBoolean, IsNumber, IsOptional, IsPhoneNumber, IsString, Matches, MinLength, ValidateNested } from 'class-validator';
+import { DailyWorkingHoursDto } from 'src/modules/settings/dto/company-working-hours.dto';
 
 class EmployeeProfile {
     @IsString({ message: 'O nome deve ser uma string' })
@@ -23,21 +24,6 @@ class EmployeeProfile {
     position: string;
 }
 
-class EmployeeWorkingHours {
-  @Matches(/^([0-1]\d|2[0-3]):([0-5]\d)$/, {
-    message: 'O horário de início deve estar no formato HH:mm',
-  })
-  startTime: string;
-
-  @Matches(/^([0-1]\d|2[0-3]):([0-5]\d)$/, {
-    message: 'O horário de término deve estar no formato HH:mm',
-  })
-  endTime: string;
-
-  @IsNumber({}, { message: 'O campo dayOfWeek deve ser um número (0-6)' })
-  dayOfWeek: number;
-}
-
 class EmployeeServices {
   @IsNumber({}, { message: 'O campo serviceId deve ser um número' })
   serviceId: number;
@@ -49,9 +35,9 @@ class WorkingHoursWrapper {
   serviceInterval: number;
 
   @ValidateNested({ each: true })
-  @Type(() => EmployeeWorkingHours)
+  @Type(() => DailyWorkingHoursDto)
   @IsOptional()
-  workingHours: EmployeeWorkingHours[];
+  workingHours: DailyWorkingHoursDto[];
 }
 
 export class CreateEmployeeDto {

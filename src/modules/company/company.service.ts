@@ -5,8 +5,7 @@ import slugify from 'slugify';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import { CreateCompanyAddressDTO } from './dto/create-company-address.dto';
 import { CompanyWorkingHoursDto, DailyWorkingHoursDto } from '../settings/dto/company-working-hours.dto';
-import { isAfter } from 'date-fns';
-import { parseTimeToMinutes } from 'src/common/helpers/time.helper';
+import { parseTimeToMinutes, validateTimeRange, validateDayOfWeek } from 'src/common/helpers/time.helper';
 import { dayNames } from 'src/common/helpers/date.helper';
 import { CategoryService } from '../category/category.service';
 
@@ -169,16 +168,11 @@ export class CompanyService {
 
         // Upsert dos horários enviados
         for (const hour of data.workingHours) {
-            const startTime = parseTimeToMinutes(hour.startTime);
-            const endTime = parseTimeToMinutes(hour.endTime);
-
-            if (startTime && !endTime || !startTime && endTime) {
-                throw new BadRequestException(`Horário inválido para ${dayNames[hour.dayOfWeek]}. Deve ter ambos os horários preenchidos.`);
-            }
-
-            if (isAfter(startTime, endTime)) {
-                throw new BadRequestException(`Horário de início não pode ser após o horário de término para ${dayNames[hour.dayOfWeek]}.`);
-            }
+            // Validar DayOfWeek
+            validateDayOfWeek(hour.dayOfWeek);
+            
+            // Validar formato e range dos horários
+            validateTimeRange(hour.startTime, hour.endTime);
 
             await this.prisma.companyWorkingHour.upsert({
                 where: {

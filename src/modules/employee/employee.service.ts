@@ -7,7 +7,7 @@ import { is, ptBR } from 'date-fns/locale';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { UserService } from '../user/user.service';
-import { parseTimeToMinutes } from 'src/common/helpers/time.helper';
+import { parseTimeToMinutes, validateDayOfWeek, validateTimeRange } from 'src/common/helpers/time.helper';
 
 @Injectable()
 export class EmployeeService {
@@ -180,38 +180,83 @@ export class EmployeeService {
             },
         });
 
-        if(dto.workingHours.workingHours && dto.workingHours.workingHours.length > 0) {
-            // Deletar os horários de trabalho existentes
+        const { workingHours } = dto.workingHours;
+        if (workingHours && workingHours.length > 0) {
+            const incomingDays = workingHours.map(hour => hour.dayOfWeek);
+
+            // Deleta horários antigos que não estão mais presentes
             await this.prisma.employeeWorkingHour.deleteMany({
-                where: { employeeId }
-            });
-            const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
-                const wh: EmployeeWorkingHour = dto.workingHours.workingHours[dayOfWeek];
-                return {
+                where: {
                     employeeId,
-                    dayOfWeek: Number(dayOfWeek),
-                    startTime: wh.startTime,
-                    endTime: wh.endTime
-                };
+                    dayOfWeek: {
+                        notIn: incomingDays
+                    }
+                }
             });
 
-            await this.prisma.employeeWorkingHour.createMany({
-                data: workingHoursData
-            });
+            // Upsert dos horários enviados
+            for (const wh of workingHours) {
+                validateDayOfWeek(wh.dayOfWeek);
+                validateTimeRange(wh.startTime, wh.endTime);
+
+                await this.prisma.employeeWorkingHour.upsert({
+                    where: {
+                        employeeId_dayOfWeek: {
+                            employeeId,
+                            dayOfWeek: wh.dayOfWeek
+                        }
+                    },
+                    update: {
+                        startTime: wh.startTime,
+                        endTime: wh.endTime
+                    },
+                    create: {
+                        employeeId,
+                        dayOfWeek: wh.dayOfWeek,
+                        startTime: wh.startTime,
+                        endTime: wh.endTime
+                    }
+                });
+            }
         }
 
-        if(dto.employeeServices && dto.employeeServices.length > 0) {
+        if (dto.employeeServices && dto.employeeServices.length > 0) {
+            const incomingServiceIds = dto.employeeServices.map(es => es.serviceId);
+
+            // Deleta serviços antigos que não estão mais presentes
             await this.prisma.employeeServices.deleteMany({
-                where: { employeeId }
+                where: {
+                    employeeId,
+                    serviceId: {
+                        notIn: incomingServiceIds
+                    }
+                }
             });
 
-            const employeeServicesData = dto.employeeServices.map(es => ({
-                employeeId,
-                serviceId: es.serviceId
-            }));
-            await this.prisma.employeeServices.createMany({
-                data: employeeServicesData
+            // Buscar serviços que já existem pra não duplicar
+            const existingServices = await this.prisma.employeeServices.findMany({
+                where: {
+                    employeeId,
+                    serviceId: { in: incomingServiceIds }
+                },
+                select: { serviceId: true }
             });
+
+            const existingServiceIds = existingServices.map(es => es.serviceId);
+
+            // Inserir apenas os novos
+            const newServices = dto.employeeServices
+                .filter(es => !existingServiceIds.includes(es.serviceId))
+                .map(es => ({
+                    employeeId,
+                    serviceId: es.serviceId
+                }));
+
+            if (newServices.length > 0) {
+                await this.prisma.employeeServices.createMany({
+                    data: newServices
+                });
+            }
         }
 
         return updatedEmployee;
