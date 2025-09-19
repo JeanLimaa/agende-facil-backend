@@ -12,9 +12,11 @@ import { EmployeeModule } from './modules/employee/employee.module';
 import { AppointmentModule } from './modules/appointments/appointment.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
+    CommonModule,
     AuthModule,
     UserModule, 
     StripeModule, 

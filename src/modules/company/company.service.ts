@@ -1,4 +1,4 @@
-import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException, UnauthorizedException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 import slugify from 'slugify';
@@ -8,63 +8,99 @@ import { CompanyWorkingHoursDto, DailyWorkingHoursDto } from '../settings/dto/co
 import { parseTimeToMinutes, validateTimeRange, validateDayOfWeek } from 'src/common/helpers/time.helper';
 import { dayNames } from 'src/common/helpers/date.helper';
 import { CategoryService } from '../category/category.service';
+import { TransactionService } from '../../common/services/transaction-context.service';
 
 @Injectable()
 export class CompanyService {
+    private readonly logger = new Logger(CompanyService.name);
+
     constructor(
         private readonly prisma: DatabaseService,
         @Inject(forwardRef(() => CategoryService))
         private readonly categoryService: CategoryService,
+        private readonly transactionService: TransactionService,
     ) { }
 
     public async createCompany(
-        data: Omit<Prisma.CompanyCreateInput, 'link'>,
-        prisma: Prisma.TransactionClient = this.prisma
+        data: Omit<Prisma.CompanyCreateInput, 'link'>
     ) {
-        const link = await this.generateUniqueLink(data.name);
+        try {
+            const prisma = this.transactionService.getPrismaInstance();
 
-        if (!link) {
-            throw new NotFoundException('Link não encontrado');
-        }
+            this.logger.log('Starting company creation', { email: data.email, name: data.name });
 
-        const companys = await this.prisma.company.findMany({
-            where: {
-                email: data.email
+            const link = await this.generateUniqueLink(data.name);
+
+            if (!link) {
+                this.logger.error('Failed to generate unique link for company', '', { name: data.name });
+                throw new BadRequestException('Não foi possível gerar um link único para a empresa');
             }
-        });
 
-        if (companys.length > 0) {
-            throw new UnauthorizedException('Empresa com esse e-mail já existe.');
-        }
+            // Verificar se empresa com email já existe
+            const existingCompany = await prisma.company.findFirst({
+                where: { email: data.email }
+            });
 
-        const company = await prisma.company.create({
-            data: {
-                ...data,
-                link
+            if (existingCompany) {
+                this.logger.warn('Attempt to create company with existing email', { email: data.email });
+                throw new UnauthorizedException('Empresa com esse e-mail já existe');
             }
-        });
 
-        // popular workings hours iniciais
-        await this.createInitialCompanyWorkingHours(company.id);
+            const company = await prisma.company.create({
+                data: {
+                    ...data,
+                    link
+                }
+            });
 
-        // criar categoria "Padrão" inicial;
-        await this.categoryService.create("Padrão", company.id);
+            this.logger.log('Company created successfully', { 
+                companyId: company.id, 
+                email: data.email,
+                link: company.link 
+            });
 
-        return company;
+            // Popular horários de funcionamento iniciais
+            await this.createInitialCompanyWorkingHours(company.id);
+
+            this.logger.log('Initial working hours created for company', { companyId: company.id });
+
+            // Criar categoria "Padrão" inicial
+            await this.categoryService.create("Padrão", company.id);
+
+            this.logger.log('Default category created for company', { companyId: company.id });
+
+            return company;
+        } catch (error) {
+            this.logger.error('Company creation failed', error.stack, { email: data.email, name: data.name });
+            throw error;
+        }
     }
 
     public async findCompanyById(id: number) {
-        const company = await this.prisma.company.findUnique({
-            where: {
-                id
-            }
-        });
+        try {
+            this.logger.log('Finding company by ID', { companyId: id });
 
-        return company;
+            const company = await this.prisma.company.findUnique({
+                where: { id }
+            });
+
+            if (company) {
+                this.logger.log('Company found successfully', { companyId: id });
+            } else {
+                this.logger.warn('Company not found', { companyId: id });
+            }
+
+            return company;
+        } catch (error) {
+            this.logger.error('Error finding company by ID', error.stack, { companyId: id });
+            throw error;
+        }
     }
 
     public async findCompanyIdByUserId(userId: number) {
-        const user = await this.prisma.user.findFirst({
+        const prisma = this.transactionService.getPrismaInstance();
+
+        const user = await prisma.user.findFirst({
             where: {
                 id: userId
             }
@@ -118,13 +154,15 @@ export class CompanyService {
     }
 
     private async createInitialCompanyWorkingHours(companyId: number) {
+        const prisma = this.transactionService.getPrismaInstance();
+
         const data: DailyWorkingHoursDto[] = Array.from({ length: 5 }, (_, i) => ({
             dayOfWeek: i + 1, // 1 a 5 (segunda a sexta)
             startTime: '08:00',
             endTime: '17:00'
         }));
 
-        return await this.prisma.companyWorkingHour.createMany({
+        return await prisma.companyWorkingHour.createMany({
             data: data.map(hour => ({
                 companyId,
                 dayOfWeek: hour.dayOfWeek,
@@ -138,84 +176,139 @@ export class CompanyService {
         companyId: number,
         data: CompanyWorkingHoursDto
     ) {
-        await this.prisma.company.findUniqueOrThrow({
-            where: { id: companyId }
-        });
+        try {
+            const prisma = this.transactionService.getPrismaInstance();
 
-        // Atualiza o intervalo entre atendimentos
-        if (data.serviceInterval && data.serviceInterval >= 0) {
-            await this.prisma.company.update({
-                where: {
-                    id: companyId
-                },
-                data: {
-                    intervalBetweenAppointments: data.serviceInterval
-                }
+            this.logger.log('Starting company working hours update', { 
+                companyId, 
+                workingHoursCount: data.workingHours.length 
             });
-        }
 
-        const incomingDays = data.workingHours.map(hour => hour.dayOfWeek);
+            // Verificar se a empresa existe
+            const company = await this.prisma.company.findUnique({
+                where: { id: companyId }
+            });
 
-        // Deleta horários antigos que não estão mais presentes
-        await this.prisma.companyWorkingHour.deleteMany({
-            where: {
-                companyId,
-                dayOfWeek: {
-                    notIn: incomingDays
-                }
+            if (!company) {
+                this.logger.warn('Company not found for working hours update', { companyId });
+                throw new NotFoundException('Empresa não encontrada');
             }
-        });
 
-        // Upsert dos horários enviados
-        for (const hour of data.workingHours) {
-            // Validar DayOfWeek
-            validateDayOfWeek(hour.dayOfWeek);
-            
-            // Validar formato e range dos horários
-            validateTimeRange(hour.startTime, hour.endTime);
+            const result = await this.transactionService.runInTransaction(async () => {
+                // Atualizar intervalo entre atendimentos
+                if (data.serviceInterval && data.serviceInterval >= 0) {
+                    await prisma.company.update({
+                        where: { id: companyId },
+                        data: { intervalBetweenAppointments: data.serviceInterval }
+                    });
 
-            await this.prisma.companyWorkingHour.upsert({
-                where: {
-                    companyId_dayOfWeek: {
+                    this.logger.log('Service interval updated', {
                         companyId,
-                        dayOfWeek: hour.dayOfWeek
-                    }
-                },
-                update: {
-                    startTime: hour.startTime,
-                    endTime: hour.endTime
-                },
-                create: {
-                    companyId,
-                    dayOfWeek: hour.dayOfWeek,
-                    startTime: hour.startTime,
-                    endTime: hour.endTime
+                        serviceInterval: data.serviceInterval
+                    });
                 }
-            })
+
+                const incomingDays = data.workingHours.map(hour => hour.dayOfWeek);
+
+                // Deletar horários antigos que não estão mais presentes
+                const deletedHours = await prisma.companyWorkingHour.deleteMany({
+                    where: {
+                        companyId,
+                        dayOfWeek: { notIn: incomingDays }
+                    }
+                });
+
+                this.logger.log('Old working hours deleted', {
+                    companyId,
+                    deletedCount: deletedHours.count
+                });
+
+                // Upsert dos horários enviados
+                for (const hour of data.workingHours) {
+                    // Validar DayOfWeek
+                    validateDayOfWeek(hour.dayOfWeek);
+
+                    // Validar formato e range dos horários
+                    validateTimeRange(hour.startTime, hour.endTime);
+
+
+                    await prisma.companyWorkingHour.upsert({
+                        where: {
+                            companyId_dayOfWeek: {
+                                companyId,
+                                dayOfWeek: hour.dayOfWeek
+                            }
+                        },
+                        update: {
+                            startTime: hour.startTime,
+                            endTime: hour.endTime
+                        },
+                        create: {
+                            companyId,
+                            dayOfWeek: hour.dayOfWeek,
+                            startTime: hour.startTime,
+                            endTime: hour.endTime
+                        }
+                    });
+                }
+
+                this.logger.log('Working hours updated successfully', {
+                    companyId,
+                    workingHoursCount: data.workingHours.length
+                });
+
+                return { success: true };
+            }
+            );
+
+            return result;
+        } catch (error) {
+            this.logger.error('Company working hours update failed', error.stack, { companyId });
+            throw error;
         }
-        return { success: true };
     }
 
     public async updateCompanyProfile(companyId: number, data: UpdateCompanyProfileDto) {
-        const company = await this.prisma.company.update({
-            where: {
-                id: companyId
-            },
-            data: {
-                name: data.profile.name,
-                phone: data.profile.phone,
-                email: data.profile.email,
-                description: data?.profile.description,
-            },
-        });
+        try {
+            this.logger.log('Starting company profile update', { companyId });
 
-        await this.createOrUpdateCompanyAddress(companyId, data.address);
+            const prisma = this.transactionService.getPrismaInstance();
+            
+            const result = await this.transactionService.runInTransaction(async () => {
+                // Atualizar dados da empresa
+                const company = await prisma.company.update({
+                    where: { id: companyId },
+                    data: {
+                        name: data.profile.name,
+                        phone: data.profile.phone,
+                        email: data.profile.email,
+                        description: data?.profile.description,
+                    },
+                });
 
-        return company;
+                this.logger.log('Company profile updated successfully', {
+                    companyId,
+                    name: data.profile.name
+                });
+
+                // Atualizar endereço da empresa
+                await this.createOrUpdateCompanyAddress(companyId, data.address, prisma);
+
+                this.logger.log('Company address updated successfully', { companyId });
+
+                return company;
+            }
+            );
+
+            return result;
+        } catch (error) {
+            this.logger.error('Company profile update failed', error.stack, { companyId });
+            throw error;
+        }
     }
 
-    private async createOrUpdateCompanyAddress(companyId: number, data: CreateCompanyAddressDTO) {
-        const company = await this.prisma.company.findUnique({
+    private async createOrUpdateCompanyAddress(companyId: number, data: CreateCompanyAddressDTO, prisma: Prisma.TransactionClient = this.prisma) {
+        const company = await prisma.company.findUnique({
             where: { id: companyId }
         });
 
@@ -223,12 +316,12 @@ export class CompanyService {
             throw new NotFoundException('Empresa não encontrada');
         }
 
-        const companyAddress = await this.prisma.companyAddress.findFirst({
+        const companyAddress = await prisma.companyAddress.findFirst({
             where: { companyId }
         });
 
         if (companyAddress) {
-            return this.prisma.companyAddress.update({
+            return prisma.companyAddress.update({
                 where: { companyId },
                 data: {
                     zipCode: data.zipCode,
@@ -241,7 +334,7 @@ export class CompanyService {
                 }
             });
         } else {
-            return this.prisma.companyAddress.create({
+            return prisma.companyAddress.create({
                 data: {
                     companyId,
                     zipCode: data.zipCode,

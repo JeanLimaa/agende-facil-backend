@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { EmployeeWorkingHour, Prisma, Status } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
@@ -8,40 +8,73 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { UserService } from '../user/user.service';
 import { parseTimeToMinutes, validateDayOfWeek, validateTimeRange } from 'src/common/helpers/time.helper';
+import { TransactionService } from '../../common/services/transaction-context.service';
+import { DailyWorkingHoursDto } from '../settings/dto/company-working-hours.dto';
 
 @Injectable()
 export class EmployeeService {
+    private readonly logger = new Logger(EmployeeService.name);
+
     constructor(
         private readonly prisma: DatabaseService,
         private readonly userService: UserService,
-        private readonly companyService: CompanyService
+        private readonly companyService: CompanyService,
+        private readonly transactionService: TransactionService,
     ) { }
 
     public async getOrThrowEmployeeById(employeeId: number) {
-        const employee = await this.prisma.employee.findUnique({
-            where: { id: employeeId },
-            include: {
-                workingHours: true,
-                employeeServices: { select: { service: true } }
+        try {
+            this.logger.log('Getting employee by ID', { employeeId });
+
+            const employee = await this.prisma.employee.findUnique({
+                where: { id: employeeId },
+                include: {
+                    workingHours: true,
+                    employeeServices: { select: { service: true } }
+                }
+            });
+
+            if (!employee) {
+                this.logger.warn('Employee not found', { employeeId });
+                throw new BadRequestException('Funcionário não encontrado');
             }
-        });
 
-        if (!employee) {
-            throw new BadRequestException('Funcionário não encontrado');
+            this.logger.log('Employee found successfully', { 
+                employeeId, 
+                employeeName: employee.name,
+                companyId: employee.companyId 
+            });
+
+            return employee;
+        } catch (error) {
+            this.logger.error('Error getting employee by ID', error.stack, { employeeId });
+            throw error;
         }
-
-        return employee;
     }
 
     public async listByCompanyId(companyId: number) {
-        return await this.prisma.employee.findMany({
-            where: { companyId, isActive: true },
-            orderBy: { name: 'asc' },
-            include: {
-                workingHours: true,
-                employeeServices: { select: { service: true } }
-            }
-        });
+        try {
+            this.logger.log('Listing employees by company ID', { companyId });
+
+            const employees = await this.prisma.employee.findMany({
+                where: { companyId, isActive: true },
+                orderBy: { name: 'asc' },
+                include: {
+                    workingHours: true,
+                    employeeServices: { select: { service: true } }
+                }
+            });
+
+            this.logger.log('Employees listed successfully', { 
+                companyId, 
+                employeeCount: employees.length 
+            });
+
+            return employees;
+        } catch (error) {
+            this.logger.error('Error listing employees by company ID', error.stack, { companyId });
+            throw error;
+        }
     }
 
     // Verificar disponibilidade do funcionário para determinado serviço e data
@@ -117,173 +150,301 @@ export class EmployeeService {
     }
 
     public async createEmployee(data: Prisma.EmployeeCreateManyInput){
-        return await this.prisma.employee.create({
-            data
-        });
+        try {
+            this.logger.log('Creating new employee', { 
+                name: data.name, 
+                companyId: data.companyId 
+            });
+
+            const employee = await this.prisma.employee.create({
+                data
+            });
+
+            this.logger.log('Employee created successfully', { 
+                employeeId: employee.id, 
+                name: employee.name,
+                companyId: employee.companyId 
+            });
+
+            return employee;
+        } catch (error) {
+            this.logger.error('Error creating employee', error.stack, { 
+                name: data.name, 
+                companyId: data.companyId 
+            });
+            throw error;
+        }
     }
 
     public async registerEmployee(adminId: number, dto: CreateEmployeeDto) {
-        const isAdminRequest = await this.userService.isUserAdmin(adminId);
+        try {
+            const prisma = this.transactionService.getPrismaInstance();
 
-        if (!isAdminRequest) {
-            throw new UnauthorizedException('Apenas administradores podem cadastrar funcionários');
-        }
-
-        const companyId = await this.companyService.findCompanyIdByUserId(adminId);
-        const employee = await this.createEmployee({
-            companyId,
-            name: dto.profile.name,
-            phone: dto.profile.phone,
-            displayOnline: dto.profile.displayOnline,
-            position: dto.profile.position,
-            profileImageUrl: dto.profile.profileImageUrl || null,
-        });
-
-        if(dto.workingHours.workingHours && dto.workingHours.workingHours.length > 0) {
-            const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
-                const wh = dto.workingHours.workingHours[dayOfWeek];
-                return {
-                    employeeId: employee.id,
-                    dayOfWeek: Number(dayOfWeek),
-                    startTime: wh.startTime,
-                    endTime: wh.endTime,
-                    isClosed: wh.isClosed || false
-                };
+            this.logger.log('Starting employee registration', { 
+                adminId, 
+                employeeName: dto.profile.name 
             });
 
-            await this.prisma.employeeWorkingHour.createMany({
-                data: workingHoursData
-            });
-        }
+            const isAdminRequest = await this.userService.isUserAdmin(adminId);
 
-        return employee;
+            if (!isAdminRequest) {
+                this.logger.warn('Non-admin user attempted to register employee', { adminId });
+                throw new UnauthorizedException('Apenas administradores podem cadastrar funcionários');
+            }
+
+            const companyId = await this.companyService.findCompanyIdByUserId(adminId);
+            
+            this.logger.log('Creating employee profile with transaction', { 
+                adminId, 
+                companyId, 
+                employeeName: dto.profile.name 
+            });
+
+            const nameExists = await prisma.employee.findFirst({
+                where: { 
+                    name: dto.profile.name,
+                    companyId
+                }
+            });
+
+            if (nameExists) {
+                this.logger.warn('Attempt to register employee with duplicate name', { 
+                    adminId, 
+                    companyId,
+                    employeeName: dto.profile.name
+                });
+                throw new BadRequestException('Já existe um funcionário com este nome cadastrado na empresa');
+            }
+
+            const employee = await this.transactionService.runInTransaction(async () => {
+                    // Criar funcionário
+                    const newEmployee = await prisma.employee.create({
+                        data: {
+                            companyId,
+                            name: dto.profile.name,
+                            phone: dto.profile.phone,
+                            displayOnline: dto.profile.displayOnline,
+                            position: dto.profile.position,
+                            profileImageUrl: dto.profile.profileImageUrl || null,
+                        }
+                    });
+
+                    // Criar horários de trabalho se fornecidos
+                    if(dto.workingHours?.workingHours && dto.workingHours.workingHours.length > 0) {
+                        const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
+                            const wh: DailyWorkingHoursDto = dto.workingHours.workingHours[dayOfWeek];
+                            return {
+                                employeeId: newEmployee.id,
+                                dayOfWeek: Number(dayOfWeek),
+                                startTime: wh.startTime,
+                                endTime: wh.endTime
+                            };
+                        });
+
+                        await prisma.employeeWorkingHour.createMany({
+                            data: workingHoursData
+                        });
+                    }
+
+                    return newEmployee;
+                }
+            );
+
+            this.logger.log('Employee registration completed successfully', { 
+                employeeId: employee.id, 
+                adminId, 
+                companyId 
+            });
+
+            return employee;
+        } catch (error) {
+            this.logger.error('Employee registration failed', error.stack, { 
+                adminId, 
+                employeeName: dto.profile.name 
+            });
+            throw error;
+        }
     }
 
     public async updateEmployee(userId: number, employeeId: number, dto: CreateEmployeeDto) {
-        const isAdminRequest = await this.userService.isUserAdmin(userId);
+        try {
+            this.logger.log('Starting employee update', { userId, employeeId });
 
-        if (!isAdminRequest && userId !== employeeId) {
-            throw new UnauthorizedException('Apenas administradores podem atualizar funcionários');
-        }
+            const prisma = this.transactionService.getPrismaInstance();
 
-        await this.getOrThrowEmployeeById(employeeId);
+            const isAdminRequest = await this.userService.isUserAdmin(userId);
 
-        const updatedEmployee = await this.prisma.employee.update({
-            where: { id: employeeId },
-            data: {
-                name: dto.profile.name,
-                phone: dto.profile.phone,
-                displayOnline: dto.profile.displayOnline,
-                position: dto.profile.position,
-                profileImageUrl: dto.profile.profileImageUrl || null,
-                serviceInterval: dto.workingHours.serviceInterval,
-            },
-        });
+            if (!isAdminRequest && userId !== employeeId) {
+                this.logger.warn('Unauthorized employee update attempt', { userId, employeeId });
+                throw new UnauthorizedException('Apenas administradores podem atualizar funcionários');
+            }
 
-        const { workingHours } = dto.workingHours;
-        if (workingHours && workingHours.length > 0) {
-            const incomingDays = workingHours.map(hour => hour.dayOfWeek);
+            await this.getOrThrowEmployeeById(employeeId);
 
-            // Deleta horários antigos que não estão mais presentes
-            await this.prisma.employeeWorkingHour.deleteMany({
-                where: {
-                    employeeId,
-                    dayOfWeek: {
-                        notIn: incomingDays
-                    }
-                }
-            });
+            const updatedEmployee = await this.transactionService.runInTransaction(async () => {
+                    // Atualizar dados básicos do funcionário
+                    const employee = await prisma.employee.update({
+                        where: { id: employeeId },
+                        data: {
+                            name: dto.profile.name,
+                            phone: dto.profile.phone,
+                            displayOnline: dto.profile.displayOnline,
+                            position: dto.profile.position,
+                            profileImageUrl: dto.profile.profileImageUrl || null,
+                            serviceInterval: dto.workingHours.serviceInterval,
+                        },
+                    });
 
-            // Upsert dos horários enviados
-            for (const wh of workingHours) {
-                validateDayOfWeek(wh.dayOfWeek);
-                validateTimeRange(wh.startTime, wh.endTime);
+                    // Atualizar horários de trabalho
+                    const { workingHours } = dto.workingHours;
+                    if (workingHours && workingHours.length > 0) {
+                        const incomingDays = workingHours.map(hour => hour.dayOfWeek);
 
-                await this.prisma.employeeWorkingHour.upsert({
-                    where: {
-                        employeeId_dayOfWeek: {
-                            employeeId,
-                            dayOfWeek: wh.dayOfWeek
+                        // Deleta horários antigos que não estão mais presentes
+                        await prisma.employeeWorkingHour.deleteMany({
+                            where: {
+                                employeeId,
+                                dayOfWeek: {
+                                    notIn: incomingDays
+                                }
+                            }
+                        });
+
+                        // Upsert dos horários enviados
+                        for (const wh of workingHours) {
+                            validateDayOfWeek(wh.dayOfWeek);
+                            validateTimeRange(wh.startTime, wh.endTime);
+
+                            await prisma.employeeWorkingHour.upsert({
+                                where: {
+                                    employeeId_dayOfWeek: {
+                                        employeeId,
+                                        dayOfWeek: wh.dayOfWeek
+                                    }
+                                },
+                                update: {
+                                    startTime: wh.startTime,
+                                    endTime: wh.endTime
+                                },
+                                create: {
+                                    employeeId,
+                                    dayOfWeek: wh.dayOfWeek,
+                                    startTime: wh.startTime,
+                                    endTime: wh.endTime
+                                }
+                            });
                         }
-                    },
-                    update: {
-                        startTime: wh.startTime,
-                        endTime: wh.endTime
-                    },
-                    create: {
-                        employeeId,
-                        dayOfWeek: wh.dayOfWeek,
-                        startTime: wh.startTime,
-                        endTime: wh.endTime
                     }
-                });
-            }
-        }
 
-        if (dto.employeeServices && dto.employeeServices.length > 0) {
-            const incomingServiceIds = dto.employeeServices.map(es => es.serviceId);
+                    // Atualizar serviços do funcionário
+                    if (dto.employeeServices && dto.employeeServices.length > 0) {
+                        const incomingServiceIds = dto.employeeServices.map(es => es.serviceId);
 
-            // Deleta serviços antigos que não estão mais presentes
-            await this.prisma.employeeServices.deleteMany({
-                where: {
-                    employeeId,
-                    serviceId: {
-                        notIn: incomingServiceIds
+                        // Deleta serviços antigos que não estão mais presentes
+                        await prisma.employeeServices.deleteMany({
+                            where: {
+                                employeeId,
+                                serviceId: {
+                                    notIn: incomingServiceIds
+                                }
+                            }
+                        });
+
+                        // Buscar serviços que já existem para não duplicar
+                        const existingServices = await prisma.employeeServices.findMany({
+                            where: {
+                                employeeId,
+                                serviceId: { in: incomingServiceIds }
+                            },
+                            select: { serviceId: true }
+                        });
+
+                        const existingServiceIds = existingServices.map(es => es.serviceId);
+
+                        // Inserir apenas os novos
+                        const newServices = dto.employeeServices
+                            .filter(es => !existingServiceIds.includes(es.serviceId))
+                            .map(es => ({
+                                employeeId,
+                                serviceId: es.serviceId
+                            }));
+
+                        if (newServices.length > 0) {
+                            await prisma.employeeServices.createMany({
+                                data: newServices
+                            });
+                        }
                     }
+
+                    return employee;
                 }
+            );
+
+            this.logger.log('Employee updated successfully', { 
+                employeeId, 
+                userId, 
+                employeeName: updatedEmployee.name 
             });
 
-            // Buscar serviços que já existem pra não duplicar
-            const existingServices = await this.prisma.employeeServices.findMany({
-                where: {
-                    employeeId,
-                    serviceId: { in: incomingServiceIds }
-                },
-                select: { serviceId: true }
-            });
-
-            const existingServiceIds = existingServices.map(es => es.serviceId);
-
-            // Inserir apenas os novos
-            const newServices = dto.employeeServices
-                .filter(es => !existingServiceIds.includes(es.serviceId))
-                .map(es => ({
-                    employeeId,
-                    serviceId: es.serviceId
-                }));
-
-            if (newServices.length > 0) {
-                await this.prisma.employeeServices.createMany({
-                    data: newServices
-                });
-            }
+            return updatedEmployee;
+        } catch (error) {
+            this.logger.error('Error updating employee', error.stack, { userId, employeeId });
+            throw error;
         }
-
-        return updatedEmployee;
     }
 
     public async deleteEmployee(userId: number, employeeId: number) {
-        await this.getOrThrowEmployeeById(employeeId);
+        try {
+            this.logger.log('Starting employee deletion', { userId, employeeId });
 
-        const isAdminRequest = await this.userService.isUserAdmin(userId);
-        if (!isAdminRequest && userId !== employeeId) {
-            throw new UnauthorizedException('Apenas administradores podem excluir funcionários');
-        }
+            await this.getOrThrowEmployeeById(employeeId);
 
-        return await this.prisma.employee.update({
-            where: { id: employeeId },
-            data: {
-                isActive: false
+            const isAdminRequest = await this.userService.isUserAdmin(userId);
+            if (!isAdminRequest && userId !== employeeId) {
+                this.logger.warn('Unauthorized employee deletion attempt', { userId, employeeId });
+                throw new UnauthorizedException('Apenas administradores podem excluir funcionários');
             }
-        });
+
+            const deletedEmployee = await this.prisma.employee.update({
+                where: { id: employeeId },
+                data: {
+                    isActive: false
+                }
+            });
+
+            this.logger.log('Employee soft deleted successfully', { 
+                employeeId, 
+                userId, 
+                employeeName: deletedEmployee.name 
+            });
+
+            return deletedEmployee;
+        } catch (error) {
+            this.logger.error('Employee deletion failed', error.stack, { userId, employeeId });
+            throw error;
+        }
     }
 
     public async servicesAttendedByProfessional(employeeId: number) {
-        return await this.prisma.employeeServices.findMany({
-            where: { employeeId },
-            include: {
-                service: true
-            }
-        });
+        try {
+            this.logger.log('Getting services attended by professional', { employeeId });
+
+            const employeeServices = await this.prisma.employeeServices.findMany({
+                where: { employeeId },
+                include: {
+                    service: true
+                }
+            });
+
+            this.logger.log('Services retrieved successfully', { 
+                employeeId, 
+                serviceCount: employeeServices.length 
+            });
+
+            return employeeServices;
+        } catch (error) {
+            this.logger.error('Error getting services attended by professional', error.stack, { employeeId });
+            throw error;
+        }
     }
 }

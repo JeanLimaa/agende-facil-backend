@@ -16,29 +16,58 @@ const statusTranslation = {
 
 @Injectable()
 export class AppointmentService {
+  private readonly logger = new Logger(AppointmentService.name);
+
   constructor(
     private readonly prisma: DatabaseService,
-    private readonly employeeService: EmployeeService
+    private readonly employeeService: EmployeeService,
   ) {}
 
   public async createAppointment(data: CreateAppointmentDto, role: Role): Promise<Appointment> {
-    return await this.prisma.$transaction(async (prismaTransaction) => {
-      const appointmentData = await this.prepareAppointmentData(data, role);
-  
-      const appointment = await prismaTransaction.appointment.create({
-        data: appointmentData,
+    try {
+      this.logger.log('Creating new appointment', { 
+        clientId: data.clientId, 
+        employeeId: data.employeeId, 
+        serviceIds: data.serviceId, 
+        role 
       });
-  
-      // cria os relacionamentos com os serviços
-      await prismaTransaction.appointmentService.createMany({
-        data: data.serviceId.map((serviceId) => ({
-          appointmentId: appointment.id,
-          serviceId,
-        })),
+
+      return await this.prisma.$transaction(async (prismaTransaction) => {
+        const appointmentData = await this.prepareAppointmentData(data, role);
+    
+        const appointment = await prismaTransaction.appointment.create({
+          data: appointmentData,
+        });
+    
+        // cria os relacionamentos com os serviços
+        await prismaTransaction.appointmentService.createMany({
+          data: data.serviceId.map((serviceId) => ({
+            appointmentId: appointment.id,
+            serviceId,
+          })),
+        });
+
+        this.logger.log('Appointment created successfully', { 
+          appointmentId: appointment.id, 
+          clientId: appointment.clientId, 
+          employeeId: appointment.employeeId, 
+          totalPrice: appointment.totalPrice 
+        });
+    
+        return appointment;
       });
-  
-      return appointment;
-    });
+    } catch (error) {
+      if(error instanceof InternalServerErrorException) {
+        this.logger.error('Error creating appointment', error.stack, { 
+          clientId: data.clientId, 
+          employeeId: data.employeeId, 
+          role 
+        });
+      } else {
+        this.logger.warn('Error creating appointment', { clientId: data.clientId, employeeId: data.employeeId, role, errorMessage: error.message });
+      }
+      throw error;
+    }
   }
 
   public async createBlock(dto: BlockAppointmentDto): Promise<Appointment> {
@@ -104,115 +133,242 @@ export class AppointmentService {
   } */
 
   public async updateAppointmentStatus(id: number, status: Status) {
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id },
-    });
+    try {
+      this.logger.log('Updating appointment status', { appointmentId: id, newStatus: status });
 
-    if (!appointment) {
-      throw new BadRequestException('Agendamento não encontrado.');
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id },
+      });
+
+      if (!appointment) {
+        this.logger.warn('Appointment not found for status update', { appointmentId: id });
+        throw new BadRequestException('Agendamento não encontrado.');
+      }
+
+      const updatedAppointment = await this.prisma.appointment.update({
+        where: { id },
+        data: { status },
+      });
+
+      this.logger.log('Appointment status updated successfully', { 
+        appointmentId: id, 
+        oldStatus: appointment.status, 
+        newStatus: status 
+      });
+
+      return updatedAppointment;
+    } catch (error) {
+      this.logger.error('Error updating appointment status', error.stack, { appointmentId: id, status });
+      throw error;
     }
-
-    return await this.prisma.appointment.update({
-      where: { id },
-      data: { status },
-    });
   }
 
   public async listPendingAppointments() {
-    return this.prisma.appointment.findMany({
-      where: { status: Status.PENDING, isBlock: false }, // Filtra por agendamentos pendentes
-    });
+    try {
+      this.logger.log('Listing pending appointments');
+
+      const appointments = await this.prisma.appointment.findMany({
+        where: { status: Status.PENDING, isBlock: false }, // Filtra por agendamentos pendentes
+      });
+
+      this.logger.log('Pending appointments retrieved successfully', { 
+        appointmentCount: appointments.length 
+      });
+
+      return appointments;
+    } catch (error) {
+      this.logger.error('Error listing pending appointments', error.stack);
+      throw error;
+    }
   }
 
   public async findAllByCompany(companyId: number) {
-    const appointments = await this.prisma.appointment.findMany({
-      where: {
-        employee: {
-          companyId,
-        },
-        isBlock: false,
-      },
-      include: {
-        client: true
-      }
-    });
+    try {
+      this.logger.log('Finding all appointments by company', { companyId });
 
-    return appointments.map((appointment) => ({
-      ...appointment,
-      status: statusTranslation[appointment.status],
-      clientName: appointment.client.name
-    }));
+      const appointments = await this.prisma.appointment.findMany({
+        where: {
+          employee: {
+            companyId,
+          },
+          isBlock: false,
+        },
+        include: {
+          client: true
+        }
+      });
+
+      const formattedAppointments = appointments.map((appointment) => ({
+        ...appointment,
+        status: statusTranslation[appointment.status],
+        clientName: appointment.client.name
+      }));
+
+      this.logger.log('Appointments retrieved successfully by company', { 
+        companyId, 
+        appointmentCount: appointments.length 
+      });
+
+      return formattedAppointments;
+    } catch (error) {
+      this.logger.error('Error finding appointments by company', error.stack, { companyId });
+      throw error;
+    }
   }
 
   public async findAppointmentById(id: number) {
-    return this.prisma.appointment.findUnique({
-      where: { id, isBlock: false },
-      include: {
-        client: true,
-        employee: true,
-        appointmentServices: true
-      },
-    });
+    try {
+      this.logger.log('Finding appointment by ID', { appointmentId: id });
+
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id, isBlock: false },
+        include: {
+          client: true,
+          employee: true,
+          appointmentServices: true
+        },
+      });
+
+      if (appointment) {
+        this.logger.log('Appointment found successfully', { 
+          appointmentId: id, 
+          clientId: appointment.clientId, 
+          employeeId: appointment.employeeId 
+        });
+      } else {
+        this.logger.warn('Appointment not found', { appointmentId: id });
+      }
+
+      return appointment;
+    } catch (error) {
+      this.logger.error('Error finding appointment by ID', error.stack, { appointmentId: id });
+      throw error;
+    }
   }
 
   public async deleteAppointment(id: number) {
-    return this.prisma.appointment.delete({
-      where: { id },
-    });
+    try {
+      this.logger.log('Deleting appointment', { appointmentId: id });
+
+      const result = await this.prisma.appointment.delete({
+        where: { id },
+      });
+
+      this.logger.log('Appointment deleted successfully', { 
+        appointmentId: id, 
+        clientId: result.clientId, 
+        employeeId: result.employeeId 
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error deleting appointment', error.stack, { appointmentId: id });
+      throw error;
+    }
   }
 
   public async markAsCompleted(id: number, companyId: number) {
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id },
-    });
+    try {
+      this.logger.log('Marking appointment as completed', { appointmentId: id, companyId });
 
-    if (!appointment) {
-      throw new BadRequestException('Agendamento não encontrado.');
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id },
+      });
+
+      if (!appointment) {
+        this.logger.warn('Appointment not found for completion', { appointmentId: id });
+        throw new BadRequestException('Agendamento não encontrado.');
+      }
+
+      // Verifica se a solicitação é feita por alguém da empresa
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: appointment.employeeId },
+      });
+      if (!employee || employee.companyId !== companyId) {
+        this.logger.warn('Unauthorized appointment completion attempt', { 
+          appointmentId: id, 
+          requestCompanyId: companyId, 
+          employeeCompanyId: employee?.companyId 
+        });
+        throw new UnauthorizedException('Acesso não autorizado. Você não pode marcar este agendamento como atendido, pois não pertence à empresa.');
+      }
+
+      if (appointment.status !== Status.PENDING) {
+        this.logger.warn('Cannot complete appointment - not pending', { 
+          appointmentId: id, 
+          currentStatus: appointment.status 
+        });
+        throw new BadRequestException('Agendamento não pode ser marcado como atendido, pois não está pendente.');
+      }
+
+      const result = await this.prisma.appointment.update({
+        where: { id },
+        data: { status: Status.COMPLETED },
+      });
+
+      this.logger.log('Appointment marked as completed successfully', { 
+        appointmentId: id, 
+        companyId, 
+        clientId: appointment.clientId 
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error marking appointment as completed', error.stack, { appointmentId: id, companyId });
+      throw error;
     }
-
-    // Verifica se a solicitação é feita por alguém da empresa
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: appointment.employeeId },
-    });
-    if (!employee || employee.companyId !== companyId) {
-      throw new UnauthorizedException('Acesso não autorizado. Você não pode marcar este agendamento como atendido, pois não pertence à empresa.');
-    }
-
-    if (appointment.status !== Status.PENDING) {
-      throw new BadRequestException('Agendamento não pode ser marcado como atendido, pois não está pendente.');
-    }
-
-    return await this.prisma.appointment.update({
-      where: { id },
-      data: { status: Status.COMPLETED },
-    });
   }
 
   public async markAsCanceled(id: number, companyId: number) {
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id },
-    });
+    try {
+      this.logger.log('Marking appointment as canceled', { appointmentId: id, companyId });
 
-    if (!appointment) {
-      throw new BadRequestException('Agendamento não encontrado.');
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id },
+      });
+
+      if (!appointment) {
+        this.logger.warn('Appointment not found for cancellation', { appointmentId: id });
+        throw new BadRequestException('Agendamento não encontrado.');
+      }
+
+      // Verifica se a solicitação é feita por alguém da empresa
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: appointment.employeeId },
+      });
+      if (!employee || employee.companyId !== companyId) {
+        this.logger.warn('Unauthorized appointment cancellation attempt', { 
+          appointmentId: id, 
+          requestCompanyId: companyId, 
+          employeeCompanyId: employee?.companyId 
+        });
+        throw new UnauthorizedException('Acesso não autorizado. Você não pode marcar este agendamento como cancelado, pois não pertence à empresa.');
+      }
+
+      if (appointment.status !== Status.PENDING) {
+        this.logger.warn('Cannot cancel appointment - not pending', { 
+          appointmentId: id, 
+          currentStatus: appointment.status 
+        });
+        throw new BadRequestException('Agendamento não pode ser cancelado, pois não está pendente.');
+      }
+
+      const result = await this.prisma.appointment.update({
+        where: { id },
+        data: { status: Status.CANCELLED },
+      });
+
+      this.logger.log('Appointment marked as canceled successfully', { 
+        appointmentId: id, 
+        companyId, 
+        clientId: appointment.clientId 
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error marking appointment as canceled', error.stack, { appointmentId: id, companyId });
+      throw error;
     }
-
-    // Verifica se a solicitação é feita por alguém da empresa
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: appointment.employeeId },
-    });
-    if (!employee || employee.companyId !== companyId) {
-      throw new UnauthorizedException('Acesso não autorizado. Você não pode marcar este agendamento como atendido, pois não pertence à empresa.');
-    }
-
-    if (appointment.status !== Status.PENDING) {
-      throw new BadRequestException('Agendamento não pode ser cancelado, pois não está pendente.');
-    }
-
-    return await this.prisma.appointment.update({
-      where: { id },
-      data: { status: Status.CANCELLED },
-    });
   }
 
   public async updateAppointment(id: number, data: CreateAppointmentDto, role: Role) {
@@ -255,7 +411,6 @@ export class AppointmentService {
 
   private async prepareAppointmentData(data: CreateAppointmentDto, role: Role) {
     try {
-      
       const employee = await this.prisma.employee.findUnique({
         where: { id: data.employeeId },
       });
@@ -299,9 +454,9 @@ export class AppointmentService {
           id: { in: data.serviceId },
         },
       });
-      console.log('Services found:', services);
+      
       const subTotalPrice = sumByProp(services, 'price');
-      console.log('SubTotalPrice calculated:', subTotalPrice);
+      
       const discount = (role === Role.ADMIN || role === Role.EMPLOYEE) ? data.discount : 0;
   
       if (discount > subTotalPrice) {
@@ -365,3 +520,4 @@ export class AppointmentService {
     return formatted;
   }
 }
+

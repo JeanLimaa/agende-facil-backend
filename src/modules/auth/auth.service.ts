@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, NotFoundException, BadRequestException, Logger, InternalServerErrorException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../user/user.service';
@@ -14,9 +14,12 @@ import { GetMePayload } from './interfaces/GetMePayload.interface';
 import { EmployeeService } from '../employee/employee.service';
 import { CategoryService } from '../category/category.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { TransactionService } from '../../common/services/transaction-context.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
@@ -25,161 +28,301 @@ export class AuthService {
     private readonly prisma: DatabaseService,
     private readonly employeeService: EmployeeService,
     private readonly categoryService: CategoryService,
+    private readonly transactionService: TransactionService,
   ) {}
 
   private async validateUser(email: string, password: string): Promise<Omit<User, "password">> {
-    const user = await this.userService.findByEmail(email);
+    try {
+      this.logger.log('Validating user credentials', { email });
 
-    if (!user) {
-      throw new UnauthorizedException('Email ou senha incorretos');
+      if (!email || !password) {
+        throw new UnauthorizedException('Email e senha são obrigatórios');
+      }
+
+      const user = await this.userService.findByEmail(email);
+      if (!user) {
+        this.logger.warn('User not found during login attempt', { email });
+        throw new UnauthorizedException('Email ou senha incorretos');
+      }
+
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
+        this.logger.warn('Invalid password during login attempt', { email });
+        throw new UnauthorizedException('Email ou senha incorretos');
+      }
+
+      this.logger.log('User credentials validated successfully', { email, userId: user.id });
+
+      const { password: _password, ...result } = user;
+      return result;
+    } catch (error) {
+      this.logger.error('Error validating user credentials', error.stack, { email });
+      throw error;
     }
-
-    const passwordMatch = await bcrypt.compare(password, user.password);
-
-    if (!passwordMatch) {
-      throw new UnauthorizedException('Email ou senha incorretos');
-    }
-
-    const { password: _password, ...result } = user;
-    return result; // Remove a senha do resultado
   }
 
-  private async validateNewUser(user: CreateUserDto) {
-    const userExists = await this.userService.findByEmail(user.email);
-    
-    if (userExists) {
-      throw new UnauthorizedException('Email já cadastrado');
+  private async validateNewUser(user: CreateUserDto): Promise<void> {
+    try {
+      this.logger.log('Validating new user registration', { email: user.email });
+
+      const userExists = await this.userService.findByEmail(user.email);
+      if (userExists) {
+        this.logger.warn('Attempt to register with existing email', { email: user.email });
+        throw new UnauthorizedException('Email já cadastrado');
+      }
+
+      this.logger.log('New user validation completed successfully', { email: user.email });
+    } catch (error) {
+      this.logger.error('Error validating new user', error.stack, { email: user.email });
+      throw error;
     }
   }
 
   public async login(body: UserLoginDto) {
-    if (!body.email || !body.password) {
-      throw new UnauthorizedException('O email e a senha são obrigatórios');
+    try {
+      this.logger.log('User login attempt', { email: body.email });
+
+      if (!body.email || !body.password) {
+        throw new UnauthorizedException('O email e a senha são obrigatórios');
+      }
+
+      const user = await this.validateUser(body.email, body.password);
+      
+      const payload: UserPayload = { 
+        userId: user.id, 
+        email: user.email, 
+        role: user.role, 
+        companyId: user.companyId 
+      };
+
+      const token = this.jwtService.sign(payload);
+
+      this.logger.log('User login successful', { 
+        email: body.email, 
+        userId: user.id,
+        role: user.role 
+      });
+
+      return {
+        access_token: token,
+      };
+    } catch (error) {
+      this.logger.error('User login failed', error.stack, { email: body.email });
+      throw error;
     }
-
-    const user = await this.validateUser(body.email, body.password);
-    
-    const payload: UserPayload = { userId: user.id, email: user.email, role: user.role, companyId: user.companyId };
-
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
   }
 
-  public async register(user: CreateUserDto){
-    await this.validateNewUser(user);
+  public async register(user: CreateUserDto) {
+    try {
+      this.logger.log('Starting user registration process', { email: user.email });
 
-    const hashedPassword = await bcrypt.hash(user.password, 10);
-    
-    // Criar uma empresa para o usuário
-    const newCompany = await this.companyService.createCompany({
-      email: user.email,
-      name: user.name,
-      phone: user.phone
-    });
-    
-    // Criar um usuário administrador para a empresa
-    const newUser = await this.userService.create({
-      email: user.email, 
-      password: hashedPassword, 
-      role: Role.ADMIN, 
-      companyId: newCompany.id,
-      employeeId: null
-    });
+      await this.validateNewUser(user);
 
-    // Criar um plano de teste inicial para a empresa
-    const trialPlan = await this.prisma.plan.findUnique({
-      where: { name: PlanType.TRIAL }
-    })
-    await this.subscriptionService.createSubscription(
-      newCompany.id, 
-      trialPlan.id
-    );
+      const hashedPassword = await bcrypt.hash(user.password, 10);
 
-    // Criar um funcionário para o administrador
-    const employeeData: CreateEmployeeDto = {profile: {
-      name: user.name,
-      phone: user.phone,
-      displayOnline: true,
-      position: null,
-      profileImageUrl: null,
-    }}
-    const employee = await this.employeeService.registerEmployee(newUser.id, employeeData);
+      const result = await this.transactionService.runInTransaction(async () => {
+        this.logger.log('Creating company for new user', { email: user.email });
 
-    // Update the user with the employeeId
-    const userUpdated = await this.userService.update(newUser.id, { employeeId: employee.id });
+        // Criar uma empresa para o usuário
+        const newCompany = await this.companyService.createCompany({
+          email: user.email,
+          name: user.name,
+          phone: user.phone
+        });
 
-    // Criar uma categoria padrão para a empresa
-    await this.categoryService.create('Padrão', newCompany.id);
+        this.logger.log('Company created successfully', {
+          companyId: newCompany.id,
+          email: user.email
+        });
 
-    const payload: UserPayload = { 
-      userId: userUpdated.id,
-      email: userUpdated.email, 
-      role: userUpdated.role, 
-      companyId: userUpdated.companyId 
-    };
+        // Criar um usuário administrador para a empresa
+        const newUser = await this.userService.create({
+          email: user.email,
+          password: hashedPassword,
+          role: Role.ADMIN,
+          companyId: newCompany.id,
+          employeeId: null
+        });
 
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
+        this.logger.log('Admin user created successfully', {
+          userId: newUser.id,
+          email: user.email
+        });
+
+        // Buscar plano trial
+        const trialPlan = await this.prisma.plan.findUnique({
+          where: { name: PlanType.TRIAL }
+        });
+
+        if (!trialPlan) {
+          this.logger.error('Trial plan not found in the system');
+          throw new InternalServerErrorException('Plano trial não encontrado');
+        }
+
+        // Criar um plano de teste inicial para a empresa
+        const subscription = await this.subscriptionService.createSubscription(
+          newCompany.id,
+          trialPlan.id,
+        );
+
+        this.logger.log('Trial subscription created successfully', {
+          subscriptionId: subscription.id,
+          companyId: newCompany.id
+        });
+
+        // Criar um funcionário para o administrador
+        const employeeData: CreateEmployeeDto = {
+          profile: {
+            name: user.name,
+            phone: user.phone,
+            displayOnline: true,
+            position: null,
+            profileImageUrl: null,
+          }
+        };
+
+        const employee = await this.employeeService.registerEmployee(newUser.id, employeeData);
+
+        this.logger.log('Employee profile created successfully', {
+          employeeId: employee.id,
+          userId: newUser.id
+        });
+
+        // Atualizar o usuário com o employeeId
+        const userUpdated = await this.userService.update(newUser.id, { employeeId: employee.id });
+
+        this.logger.log('User updated with employee reference', {
+          userId: newUser.id,
+          employeeId: employee.id
+        });
+        
+        return {
+          user: userUpdated,
+          company: newCompany,
+          employee: employee
+        };
+      },
+      );
+
+      const payload: UserPayload = { 
+        userId: result.user.id,
+        email: result.user.email, 
+        role: result.user.role, 
+        companyId: result.user.companyId 
+      };
+
+      const token = this.jwtService.sign(payload);
+
+
+      this.logger.log('User registration completed successfully', { 
+        userId: result.user.id,
+        email: user.email,
+        companyId: result.company.id
+      });
+
+      return {
+        access_token: token,
+      };
+    } catch (error) {
+      this.logger.error('User registration failed', error.stack, { email: user.email });
+      throw error;
+    }
   }
 
   public async getMe(userId: number): Promise<GetMePayload> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        employee: true,
-        company: true,
-      },
-    });
+    try {
+      this.logger.log('Getting user profile information', { userId });
 
-    if (!user) {
-      throw new UnauthorizedException('Usuário não encontrado');
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          employee: true,
+          company: true,
+        },
+      });
+
+      if (!user) {
+        this.logger.warn('User not found for getMe operation', { userId });
+        throw new NotFoundException('Usuário não encontrado');
+      }
+
+      if (!user.employee) {
+        this.logger.error('User has no associated employee profile', '', { userId });
+        throw new BadRequestException('Usuário não possui perfil de funcionário associado');
+      }
+
+      if (!user.company) {
+        this.logger.error('User has no associated company', '', { userId });
+        throw new BadRequestException('Usuário não possui empresa associada');
+      }
+
+      const payload: GetMePayload = {
+        email: user.email,
+        name: user.employee.name,
+        phone: user.employee.phone,
+        companyName: user.company.name,
+        companyLink: `${process.env.FRONTEND_URL}/cliente/${user.company.link}`,
+      };
+
+      this.logger.log('User profile information retrieved successfully', { 
+        userId, 
+        email: user.email,
+        companyId: user.companyId 
+      });
+
+      return payload;
+    } catch (error) {
+      this.logger.error('Error getting user profile information', error.stack, { userId });
+      throw error;
     }
-
-    const payload: GetMePayload = {
-      email: user.email,
-      name: user.employee.name,
-      phone: user.employee.phone,
-      companyName: user.company.name,
-      companyLink: `${process.env.FRONTEND_URL}/cliente/${user.company.link}`,
-    };
-
-    return payload;
   }
 
   public async changePassword(userId: number, changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
-    const { currentPassword, newPassword, confirmPassword } = changePasswordDto;
+    try {
+      this.logger.log('Starting password change process', { userId });
 
-    // Verificar se a nova senha e confirmação são iguais
-    if (newPassword !== confirmPassword) {
-      throw new UnauthorizedException('A nova senha e confirmação devem ser iguais');
+      const { currentPassword, newPassword, confirmPassword } = changePasswordDto;
+
+      // Verificar se a nova senha e confirmação são iguais
+      if (newPassword !== confirmPassword) {
+        this.logger.warn('Password confirmation mismatch', { userId });
+        throw new UnauthorizedException('A nova senha e confirmação devem ser iguais');
+      }
+
+      // Buscar o usuário
+      const user = await this.userService.findById(userId);
+      if (!user) {
+        this.logger.warn('User not found for password change', { userId });
+        throw new NotFoundException('Usuário não encontrado');
+      }
+
+      // Verificar se a senha atual está correta
+      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isCurrentPasswordValid) {
+        this.logger.warn('Invalid current password provided', { userId });
+        throw new UnauthorizedException('Senha atual incorreta');
+      }
+
+      // Verificar se a nova senha é diferente da atual
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+      if (isSamePassword) {
+        this.logger.warn('New password is the same as current password', { userId });
+        throw new UnauthorizedException('A nova senha deve ser diferente da senha atual');
+      }
+
+      // Criptografar a nova senha
+      const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+      // Atualizar a senha no banco de dados
+      await this.userService.update(userId, { password: hashedNewPassword });
+
+      this.logger.log('Password changed successfully', { userId });
+
+      return { message: 'Senha atualizada com sucesso' };
+    } catch (error) {
+      this.logger.error('Password change failed', error.stack, { userId });
+      throw error;
     }
-
-    // Buscar o usuário
-    const user = await this.userService.findById(userId);
-    if (!user) {
-      throw new UnauthorizedException('Usuário não encontrado');
-    }
-
-    // Verificar se a senha atual está correta
-    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
-    if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException('Senha atual incorreta');
-    }
-
-    // Verificar se a nova senha é diferente da atual
-    const isSamePassword = await bcrypt.compare(newPassword, user.password);
-    if (isSamePassword) {
-      throw new UnauthorizedException('A nova senha deve ser diferente da senha atual');
-    }
-
-    // Criptografar a nova senha
-    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-
-    // Atualizar a senha no banco de dados
-    await this.userService.update(userId, { password: hashedNewPassword });
-
-    return { message: 'Senha atualizada com sucesso' };
   }
 }
+
