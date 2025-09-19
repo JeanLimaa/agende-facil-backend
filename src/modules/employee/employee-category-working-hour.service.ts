@@ -1,15 +1,20 @@
-import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { DatabaseService } from 'src/services/Database.service';
 import { CreateEmployeeCategoryWorkingHourDto } from './dto/create-employee-category-working-hour.dto';
 import { UpdateEmployeeCategoryWorkingHourDto } from './dto/update-employee-category-working-hour.dto';
 import { BulkCreateEmployeeCategoryWorkingHourDto } from './dto/bulk-create-employee-category-working-hour.dto';
-import { validateTimeRange } from 'src/common/helpers/time.helper';
+import { validateTimeRange, parseTimeToMinutes } from 'src/common/helpers/time.helper';
+import { CompanyService } from '../company/company.service';
 
 @Injectable()
 export class EmployeeCategoryWorkingHourService {
   private readonly logger = new Logger(EmployeeCategoryWorkingHourService.name);
 
-  constructor(private readonly prisma: DatabaseService) {}
+  constructor(
+    private readonly prisma: DatabaseService,
+    @Inject(forwardRef(() => CompanyService))
+    private readonly companyService: CompanyService
+  ) {}
 
   public async create(data: CreateEmployeeCategoryWorkingHourDto) {
     try {
@@ -25,6 +30,14 @@ export class EmployeeCategoryWorkingHourService {
       } catch (error) {
         throw new BadRequestException(error.message);
       }
+
+      // Validar restrições hierárquicas (empresa -> funcionário -> categoria)
+      await this.validateHierarchicalConstraints(
+        data.employeeId,
+        data.dayOfWeek,
+        data.startTime,
+        data.endTime
+      );
 
       const employee = await this.prisma.employee.findUnique({
         where: { id: data.employeeId }
@@ -226,6 +239,14 @@ export class EmployeeCategoryWorkingHourService {
         } catch (error) {
           throw new BadRequestException(error.message);
         }
+
+        // Validar restrições hierárquicas
+        await this.validateHierarchicalConstraints(
+          existingWorkingHour.employeeId,
+          data.dayOfWeek || existingWorkingHour.dayOfWeek,
+          data.startTime,
+          data.endTime
+        );
       }
 
       const updatedWorkingHour = await this.prisma.employeeCategoryWorkingHour.update({
@@ -338,6 +359,61 @@ export class EmployeeCategoryWorkingHourService {
     } catch (error) {
       this.logger.error('Error getting available employees for category', error.stack);
       throw error;
+    }
+  }
+
+  private async validateHierarchicalConstraints(
+    employeeId: number, 
+    dayOfWeek: number, 
+    startTime: string, 
+    endTime: string
+  ): Promise<void> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: {
+        workingHours: {
+          where: { dayOfWeek }
+        }
+      }
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Funcionário não encontrado');
+    }
+
+    const companyWorkingHours = await this.companyService.getCompanyWorkingHours(employee.companyId);
+    const companyHours = companyWorkingHours.find(h => h.dayOfWeek === dayOfWeek);
+
+    if (!companyHours) {
+      throw new BadRequestException(`A empresa não funciona no dia da semana ${dayOfWeek}`);
+    }
+
+    const employeeHours = employee.workingHours[0]; // Deve haver apenas um por dia
+
+    if (!employeeHours) {
+      throw new BadRequestException(`O funcionário não trabalha no dia da semana ${dayOfWeek}`);
+    }
+
+    // Valida se os horários da categoria estão dentro dos horários da empresa
+    const categoryStart = parseTimeToMinutes(startTime);
+    const categoryEnd = parseTimeToMinutes(endTime);
+    const companyStart = parseTimeToMinutes(companyHours.startTime);
+    const companyEnd = parseTimeToMinutes(companyHours.endTime);
+
+    if (categoryStart < companyStart || categoryEnd > companyEnd) {
+      throw new BadRequestException(
+        `Os horários da categoria (${startTime}-${endTime}) devem estar dentro do horário de funcionamento da empresa (${companyHours.startTime}-${companyHours.endTime})`
+      );
+    }
+
+    // Valida se os horários da categoria estão dentro dos horários do funcionário
+    const employeeStart = parseTimeToMinutes(employeeHours.startTime);
+    const employeeEnd = parseTimeToMinutes(employeeHours.endTime);
+
+    if (categoryStart < employeeStart || categoryEnd > employeeEnd) {
+      throw new BadRequestException(
+        `Os horários da categoria (${startTime}-${endTime}) devem estar dentro do horário de trabalho do funcionário (${employeeHours.startTime}-${employeeHours.endTime})`
+      );
     }
   }
 }

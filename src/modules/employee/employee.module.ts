@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { EmployeeController } from './employee.controller';
 import { EmployeeService } from './employee.service';
 import { EmployeeCategoryWorkingHourController } from './employee-category-working-hour.controller';
@@ -13,7 +13,7 @@ import { ServiceModule } from '../service/service.module';
 @Module({
   imports: [
     UserModule,
-    CompanyModule,
+    forwardRef(() => CompanyModule),
     ServiceModule
   ],
   controllers: [EmployeeController, EmployeeCategoryWorkingHourController],
