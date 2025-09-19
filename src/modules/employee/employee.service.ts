@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
-import { EmployeeWorkingHour, Prisma, Status } from '@prisma/client';
+import { Employee, EmployeeWorkingHour, Prisma, Status } from '@prisma/client';
 import { DatabaseService } from 'src/services/Database.service';
 
-import { format, isBefore, isAfter, addMinutes, startOfDay, endOfDay, parseISO, isEqual } from 'date-fns';
+import { format, isBefore, isAfter, addMinutes, startOfDay, endOfDay, parseISO, isEqual, isSameDay } from 'date-fns';
 import { is, ptBR } from 'date-fns/locale';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
@@ -10,6 +10,8 @@ import { UserService } from '../user/user.service';
 import { parseTimeToMinutes, validateDayOfWeek, validateTimeRange } from 'src/common/helpers/time.helper';
 import { TransactionService } from '../../common/services/transaction-context.service';
 import { DailyWorkingHoursDto } from '../settings/dto/company-working-hours.dto';
+import { ServiceService } from '../service/service.service';
+import { GetAvailableTimesDTO } from './dto/get-available-times.dto';
 
 @Injectable()
 export class EmployeeService {
@@ -20,6 +22,7 @@ export class EmployeeService {
         private readonly userService: UserService,
         private readonly companyService: CompanyService,
         private readonly transactionService: TransactionService,
+        private readonly servicesService: ServiceService
     ) { }
 
     public async getOrThrowEmployeeById(employeeId: number) {
@@ -78,8 +81,23 @@ export class EmployeeService {
     }
 
     // Verificar disponibilidade do funcionário para determinado serviço e data
-    public async getAvailableTimes(employeeId: number, date: string) {
-        const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+    public async getAvailableTimes(employeeId: number, date: string, dto: GetAvailableTimesDTO) {
+        const services = await this.servicesService.getByIdsWithCategory(dto.servicesId);
+        const categoriesId = services.map(s => s.categoryId);
+        
+        const employee = await this.prisma.employee.findUnique({ 
+            where: { id: employeeId },
+            include: {
+                workingHours: true,
+                ...(categoriesId && {
+                    employeeCategoryWorkingHours: {
+                        where: { categoryId: { in: categoriesId } },
+                        orderBy: { dayOfWeek: 'asc' }
+                    }
+                })
+            }
+        });
+
         if (!employee) throw new BadRequestException('Funcionário não encontrado');
         
         const parsedDate = parseISO(date + " 00:00:00");
@@ -88,17 +106,32 @@ export class EmployeeService {
         const today = startOfDay(new Date());
         if(isBefore(parsedDate, today)) throw new BadRequestException('A data não pode ser anterior a hoje.');
 
-        const employeeStartHour = employee.startHour ? parseTimeToMinutes(employee.startHour) : 0;  // Ex: Converte "09:00" (HH:mm) para minutos
-        const employeeEndHour = employee.endHour ? parseTimeToMinutes(employee.endHour) : 1 * 60 * 23 ;
-        const interval = employee.serviceInterval;
+        const dayOfWeek = parsedDate.getDay();
 
+        // Verificar se existem horários específicos para a categoria
+        const workingHoursForDay = await this.getWorkingHoursForDay(
+            employee.employeeCategoryWorkingHours, 
+            employee.workingHours,
+            employee.companyId,
+            dayOfWeek,
+            categoriesId
+        );
+
+        if (!workingHoursForDay) {
+            return []; // Não trabalha neste dia se não encontrar horários
+        }
+
+        const employeeStartHour = parseTimeToMinutes(workingHoursForDay.startTime);
+        const employeeEndHour = parseTimeToMinutes(workingHoursForDay.endTime);
+        const interval = employee.serviceInterval;
+        
         const dayStart = startOfDay(parsedDate);
-            
+
         const availableTimes: string[] = [];
         
         for (let minutes = employeeStartHour; minutes <= employeeEndHour; minutes += interval) {
             const proposedTime = addMinutes(dayStart, minutes);
-            
+        
             const isAvailable = await this.isTimeAvailable(employeeId, proposedTime, interval);
             
             if (isAvailable) {
@@ -110,22 +143,60 @@ export class EmployeeService {
         return availableTimes;
     }
 
+    // ordem de prioridade: categoria -> funcionário -> empresa
+    private async getWorkingHoursForDay(
+        employeeCategoryWorkingHours: DailyWorkingHoursDto[], 
+        workingHours: EmployeeWorkingHour[], 
+        companyId: number,
+        dayOfWeek: number, 
+        categoriesId?: number[]
+    ): Promise<DailyWorkingHoursDto | undefined> {
+        let workingHoursForDay: DailyWorkingHoursDto | undefined;
+
+        // 1. horários específicos da categoria
+        if (categoriesId && employeeCategoryWorkingHours?.length) {
+            workingHoursForDay = employeeCategoryWorkingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+
+            // se tiver horarios configurados, mas não tiver pra esse dia, não trabalha (vale para os demais casos também)
+            return workingHoursForDay ?? undefined; 
+        }
+
+        // 2. horários gerais do funcionário
+        if (!workingHoursForDay && workingHours?.length) {
+            workingHoursForDay = workingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+            return workingHoursForDay ?? undefined;
+        }
+
+        // 3. horários da empresa
+        const companyWorkingHours = await this.companyService.getCompanyWorkingHours(companyId);
+        workingHoursForDay = companyWorkingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+        return workingHoursForDay ?? undefined;
+    }
+
     public async isTimeAvailable(
         employeeId: number,
         proposedTime: Date,
         interval: number,
         checkOnlyBlocks: boolean = false
     ): Promise<boolean> {
-        const dayStart = startOfDay(proposedTime);
-        const dayEnd = endOfDay(proposedTime);
+        const beforeDayStart = startOfDay(addMinutes(proposedTime, -1440)); // dia anterior
+        const afterDayEnd = endOfDay(addMinutes(proposedTime, 1440)); // dia seguinte
+
+        const today = startOfDay(new Date());
+        const now = new Date();
+        const appoinmentIsForToday = isSameDay(proposedTime, today);
+
+        if (appoinmentIsForToday && isBefore(proposedTime, now)) {
+            return false;
+        }
 
         const appointments = await this.prisma.appointment.findMany({
             where: {
                 employeeId,
-/*                 date: {
-                    gte: dayStart,
-                    lte: dayEnd,
-                }, */
+                date: {
+                    gte: beforeDayStart,
+                    lte: afterDayEnd,
+                },
                 status: Status.PENDING,
                 ...(checkOnlyBlocks ? { isBlock: true } : {}),
             },
@@ -135,10 +206,6 @@ export class EmployeeService {
         return !appointments.some(appointment => {
             const appointmentStart = new Date(appointment.date);
 
-/*             const appointmentDuration = appointment.appointmentServices.reduce((acc, as) => {
-                const service = services.find(s => s.id === as.serviceId);
-                return acc + (service?.duration || interval);
-            }, 0); */
             const appointmentDuration = appointment.totalDuration || interval;
 
             const appointmentEnd = addMinutes(appointmentStart, appointmentDuration);
@@ -440,7 +507,7 @@ export class EmployeeService {
                 employeeId, 
                 serviceCount: employeeServices.length 
             });
-
+            
             return employeeServices;
         } catch (error) {
             this.logger.error('Error getting services attended by professional', error.stack, { employeeId });

@@ -385,7 +385,7 @@ export class CompanyService {
         };
     }
 
-    private async getCompanyWorkingHours(companyId: number) {
+    public async getCompanyWorkingHours(companyId: number) {
         const workingHours = await this.prisma.companyWorkingHour.findMany({
             where: { companyId },
             orderBy: { dayOfWeek: 'asc' }

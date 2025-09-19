@@ -413,23 +413,27 @@ export class AppointmentService {
     try {
       const employee = await this.prisma.employee.findUnique({
         where: { id: data.employeeId },
+        include: { workingHours: true }
       });
   
       if (!employee) {
         throw new BadRequestException('Funcionário não encontrado.');
       }
-  
-      if (employee.startHour && employee.endHour) {
+
+      const dayOfWeek = parseISO(data.date).getDay(); // 0 (Domingo) a 6 (Sábado)
+      const workingHours = employee.workingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+
+      if (workingHours) {
         const appointmentDate = parseISO(data.date);
         const startHour = set(appointmentDate, {
-          hours: parseInt(employee.startHour.split(':')[0], 10),
-          minutes: parseInt(employee.startHour.split(':')[1], 10),
+          hours: parseInt(workingHours.startTime.split(':')[0], 10),
+          minutes: parseInt(workingHours.startTime.split(':')[1], 10),
           seconds: 0,
         });
   
         const endHour = set(appointmentDate, {
-          hours: parseInt(employee.endHour.split(':')[0], 10),
-          minutes: parseInt(employee.endHour.split(':')[1], 10),
+          hours: parseInt(workingHours.endTime.split(':')[0], 10),
+          minutes: parseInt(workingHours.endTime.split(':')[1], 10),
           seconds: 0,
         });
   

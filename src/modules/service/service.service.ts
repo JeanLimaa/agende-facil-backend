@@ -231,4 +231,22 @@ export class ServiceService {
             throw error;
         }
     }
+
+    public async getByIdsWithCategory(ids: number[]) {
+        try {
+            const services = await this.prisma.service.findMany({
+                where: {
+                    id: { in: ids },
+                    isActive: true
+                },
+                include: {
+                    category: true
+                }
+            });
+
+            return services;
+        } catch (error) {
+            throw error;
+        }
+    }
 }

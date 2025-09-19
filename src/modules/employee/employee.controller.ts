@@ -7,6 +7,7 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { SkipAuth } from 'src/common/decorators/SkipAuth.decorator';
 import { Roles } from 'src/common/decorators/Roles.decorator';
 import { RoleGuard } from 'src/common/guards/roles.guard';
+import { GetAvailableTimesDTO } from './dto/get-available-times.dto';
 
 @UseGuards(JwtAuthGuard, RoleGuard)
 @Controller('employee')
@@ -30,10 +31,12 @@ export class EmployeeController {
   async getAvailableTimes(
     @Param('employeeId', ParseIntPipe) employeeId: number,
     @Query('date') date: string,
+    @Body() servicesId: GetAvailableTimesDTO,
   ) {
     const availableTimes = await this.employeeService.getAvailableTimes(
       employeeId,
       date,
+      servicesId,
     );
     
     return { availableTimes };

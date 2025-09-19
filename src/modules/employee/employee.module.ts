@@ -8,11 +8,13 @@ import { CompanyService } from '../company/company.service';
 import { UserService } from '../user/user.service';
 import { UserModule } from '../user/user.module';
 import { CompanyModule } from '../company/company.module';
+import { ServiceModule } from '../service/service.module';
 
 @Module({
   imports: [
     UserModule,
     CompanyModule,
+    ServiceModule
   ],
   controllers: [EmployeeController, EmployeeCategoryWorkingHourController],
   providers: [DatabaseService, EmployeeService, EmployeeCategoryWorkingHourService],
