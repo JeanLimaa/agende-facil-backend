@@ -45,3 +45,21 @@ export function validateDayOfWeek(dayOfWeek: number): void {
         throw new BadRequestException(`DayOfWeek deve ser um número inteiro entre 0 (Domingo) e 6 (Sábado). Recebido: ${dayOfWeek}`);
     }
 }
+
+export function isValidTimeFormat(time: string): boolean {
+    if (!time) return false;
+    const timeRegex = /^([0-1]\d|2[0-3]):([0-5]\d)$/;
+    return timeRegex.test(time);
+}
+
+export function isTimeWithinRange(time: string, startTime: string, endTime: string): boolean {
+    if (!isValidTimeFormat(time) || !isValidTimeFormat(startTime) || !isValidTimeFormat(endTime)) {
+        return false;
+    }
+    
+    const timeMinutes = parseTimeToMinutes(time);
+    const startMinutes = parseTimeToMinutes(startTime);
+    const endMinutes = parseTimeToMinutes(endTime);
+    
+    return timeMinutes >= startMinutes && timeMinutes <= endMinutes;
+}
