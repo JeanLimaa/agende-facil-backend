@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
 import { DatabaseService } from 'src/services/Database.service';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 @Injectable()
 export class TransactionService {
-  private readonly asyncLocalStorage = new AsyncLocalStorage<any>();
+  private readonly asyncLocalStorage = new AsyncLocalStorage<Prisma.TransactionClient>();
 
   // Executa código dentro de um contexto de transação
   async runInTransaction<T>(callback: () => Promise<T>): Promise<T> {
@@ -14,7 +15,7 @@ export class TransactionService {
   }
 
   // Retorna a instância do Prisma (transação ou normal)
-  getPrismaInstance() {
+  getPrismaInstance(): PrismaClient | Prisma.TransactionClient {
     const tx = this.asyncLocalStorage.getStore();
     return tx || this.prisma;
   }
