@@ -6,7 +6,6 @@ import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import { CreateCompanyAddressDTO } from './dto/create-company-address.dto';
 import { CompanyWorkingHoursDto, DailyWorkingHoursDto } from '../settings/dto/company-working-hours.dto';
 import { parseTimeToMinutes, validateTimeRange, validateDayOfWeek, isTimeWithinRange } from 'src/common/helpers/time.helper';
-import { dayNames } from 'src/common/helpers/date.helper';
 import { CategoryService } from '../category/category.service';
 import { TransactionService } from '../../common/services/transaction-context.service';
 
@@ -76,6 +75,19 @@ export class CompanyService {
         }
     }
 
+    public async getCompanyWorkingHours(companyId: number) {
+        const workingHours = await this.prisma.companyWorkingHour.findMany({
+            where: { companyId },
+            orderBy: { dayOfWeek: 'asc' }
+        });
+
+        return workingHours.map(hour => ({
+            dayOfWeek: hour.dayOfWeek,
+            startTime: hour.startTime,
+            endTime: hour.endTime
+        }));
+    }
+
     public async findCompanyById(id: number) {
         try {
             this.logger.log('Finding company by ID', { companyId: id });
@@ -127,6 +139,81 @@ export class CompanyService {
         return company;
     }
 
+    public async updateCompanyProfile(companyId: number, data: UpdateCompanyProfileDto) {
+        try {
+            this.logger.log('Starting company profile update', { companyId });
+
+            const prisma = this.transactionService.getPrismaInstance();
+            
+            const result = await this.transactionService.runInTransaction(async () => {
+                // Atualizar dados da empresa
+                const company = await prisma.company.update({
+                    where: { id: companyId },
+                    data: {
+                        name: data.profile.name,
+                        phone: data.profile.phone,
+                        email: data.profile.email,
+                        description: data?.profile.description,
+                    },
+                });
+
+                this.logger.log('Company profile updated successfully', {
+                    companyId,
+                    name: data.profile.name
+                });
+
+                // Atualizar endereço da empresa
+                await this.createOrUpdateCompanyAddress(companyId, data.address, prisma);
+
+                this.logger.log('Company address updated successfully', { companyId });
+
+                return company;
+            }
+            );
+
+            return result;
+        } catch (error) {
+            this.logger.error('Company profile update failed', error.stack, { companyId });
+            throw error;
+        }
+    }
+
+    public async getCompanyInfo(companyId: number) {
+        const company = await this.prisma.company.findUniqueOrThrow({
+            where: { id: companyId }
+        });
+
+        const companyData = {
+            name: company.name,
+            email: company.email,
+            phone: company.phone,
+            description: company.description,
+        }
+
+        const companyAddress = await this.prisma.companyAddress.findFirst({
+            where: { companyId }
+        });
+
+        const companyAddressData = {
+            zipCode: companyAddress?.zipCode || '',
+            street: companyAddress?.street || '',
+            number: companyAddress?.number || '',
+            neighborhood: companyAddress?.neighborhood || '',
+            city: companyAddress?.city || '',
+            state: companyAddress?.state || '',
+            country: companyAddress?.country || ''
+        }
+
+        return {
+            profile: companyData,
+            address: companyAddress ? companyAddressData : null,
+            schedule: {
+                workingHours: await this.getCompanyWorkingHours(companyId),
+                serviceInterval: company.intervalBetweenAppointments
+            }
+        };
+    }
+
     public async getCompanyByLinkName(linkName: string) {
         const company = await this.prisma.company.findFirst({
             where: {
@@ -139,37 +226,6 @@ export class CompanyService {
         }
 
         return company;
-    }
-
-    public async updateIntervalTime(companyId: number, interval: number) {
-        const company = await this.prisma.company.update({
-            where: {
-                id: companyId
-            },
-            data: {
-                intervalBetweenAppointments: interval
-            }
-        });
-        return company;
-    }
-
-    private async createInitialCompanyWorkingHours(companyId: number) {
-        const prisma = this.transactionService.getPrismaInstance();
-
-        const data: DailyWorkingHoursDto[] = Array.from({ length: 5 }, (_, i) => ({
-            dayOfWeek: i + 1, // 1 a 5 (segunda a sexta)
-            startTime: '08:00',
-            endTime: '17:00'
-        }));
-
-        return await prisma.companyWorkingHour.createMany({
-            data: data.map(hour => ({
-                companyId,
-                dayOfWeek: hour.dayOfWeek,
-                startTime: hour.startTime,
-                endTime: hour.endTime
-            })),
-        });
     }
 
     public async updateCompanyWorkingHours(
@@ -196,73 +252,21 @@ export class CompanyService {
 
             const result = await this.transactionService.runInTransaction(async () => {
                 // Atualizar intervalo entre atendimentos
-                if (data.serviceInterval && data.serviceInterval >= 0) {
-                    await prisma.company.update({
-                        where: { id: companyId },
-                        data: { intervalBetweenAppointments: data.serviceInterval }
-                    });
-
-                    this.logger.log('Service interval updated', {
-                        companyId,
-                        serviceInterval: data.serviceInterval
-                    });
-                }
+                await this.updateServiceInterval(prisma, companyId, data.serviceInterval);
 
                 const incomingDays = data.workingHours.map(hour => hour.dayOfWeek);
 
                 // Deletar horários antigos que não estão mais presentes
-                const deletedHours = await prisma.companyWorkingHour.deleteMany({
-                    where: {
-                        companyId,
-                        dayOfWeek: { notIn: incomingDays }
-                    }
-                });
-
-                this.logger.log('Old working hours deleted', {
-                    companyId,
-                    deletedCount: deletedHours.count
-                });
+                await this.removeOldWorkingHours(prisma, companyId, incomingDays);
 
                 // Upsert dos horários enviados
-                for (const hour of data.workingHours) {
-                    // Validar DayOfWeek
-                    validateDayOfWeek(hour.dayOfWeek);
-
-                    // Validar formato e range dos horários
-                    validateTimeRange(hour.startTime, hour.endTime);
-
-
-                    await prisma.companyWorkingHour.upsert({
-                        where: {
-                            companyId_dayOfWeek: {
-                                companyId,
-                                dayOfWeek: hour.dayOfWeek
-                            }
-                        },
-                        update: {
-                            startTime: hour.startTime,
-                            endTime: hour.endTime
-                        },
-                        create: {
-                            companyId,
-                            dayOfWeek: hour.dayOfWeek,
-                            startTime: hour.startTime,
-                            endTime: hour.endTime
-                        }
-                    });
-                }
-
-                this.logger.log('Working hours updated successfully', {
-                    companyId,
-                    workingHoursCount: data.workingHours.length
-                });
+                await this.upsertCompanyWorkingHours(prisma, companyId, data.workingHours);
 
                 // Sincronizar horários de funcionários e categorias
                 await this.synchronizeEmployeeAndCategoryHours(companyId, data.workingHours);
 
                 return { success: true };
-            }
-            );
+            });
 
             return result;
         } catch (error) {
@@ -405,10 +409,6 @@ export class CompanyService {
         this.logger.log('Synchronization of employee and category hours completed', { companyId });
     }
 
-    /**
-     * Ajusta um horário para ficar dentro do range da empresa
-     * Retorna null se não for possível ajustar
-     */
     private adjustHourToCompanyRange(
         currentStart: string,
         currentEnd: string,
@@ -439,45 +439,6 @@ export class CompanyService {
         const newEndTime = `${Math.floor(newEndMinutes / 60).toString().padStart(2, '0')}:${(newEndMinutes % 60).toString().padStart(2, '0')}`;
 
         return { startTime: newStartTime, endTime: newEndTime };
-    }
-
-    public async updateCompanyProfile(companyId: number, data: UpdateCompanyProfileDto) {
-        try {
-            this.logger.log('Starting company profile update', { companyId });
-
-            const prisma = this.transactionService.getPrismaInstance();
-            
-            const result = await this.transactionService.runInTransaction(async () => {
-                // Atualizar dados da empresa
-                const company = await prisma.company.update({
-                    where: { id: companyId },
-                    data: {
-                        name: data.profile.name,
-                        phone: data.profile.phone,
-                        email: data.profile.email,
-                        description: data?.profile.description,
-                    },
-                });
-
-                this.logger.log('Company profile updated successfully', {
-                    companyId,
-                    name: data.profile.name
-                });
-
-                // Atualizar endereço da empresa
-                await this.createOrUpdateCompanyAddress(companyId, data.address, prisma);
-
-                this.logger.log('Company address updated successfully', { companyId });
-
-                return company;
-            }
-            );
-
-            return result;
-        } catch (error) {
-            this.logger.error('Company profile update failed', error.stack, { companyId });
-            throw error;
-        }
     }
 
     private async createOrUpdateCompanyAddress(companyId: number, data: CreateCompanyAddressDTO, prisma: Prisma.TransactionClient = this.prisma) {
@@ -522,53 +483,97 @@ export class CompanyService {
         }
     }
 
-    public async getCompanyInfo(companyId: number) {
-        const company = await this.prisma.company.findUniqueOrThrow({
-            where: { id: companyId }
+    private async createInitialCompanyWorkingHours(companyId: number) {
+        const prisma = this.transactionService.getPrismaInstance();
+
+        const data: DailyWorkingHoursDto[] = Array.from({ length: 5 }, (_, i) => ({
+            dayOfWeek: i + 1, // 1 a 5 (segunda a sexta)
+            startTime: '08:00',
+            endTime: '17:00'
+        }));
+
+        return await prisma.companyWorkingHour.createMany({
+            data: data.map(hour => ({
+                companyId,
+                dayOfWeek: hour.dayOfWeek,
+                startTime: hour.startTime,
+                endTime: hour.endTime
+            })),
         });
-
-        const companyData = {
-            name: company.name,
-            email: company.email,
-            phone: company.phone,
-            description: company.description,
-        }
-
-        const companyAddress = await this.prisma.companyAddress.findFirst({
-            where: { companyId }
-        });
-
-        const companyAddressData = {
-            zipCode: companyAddress?.zipCode || '',
-            street: companyAddress?.street || '',
-            number: companyAddress?.number || '',
-            neighborhood: companyAddress?.neighborhood || '',
-            city: companyAddress?.city || '',
-            state: companyAddress?.state || '',
-            country: companyAddress?.country || ''
-        }
-
-        return {
-            profile: companyData,
-            address: companyAddress ? companyAddressData : null,
-            schedule: {
-                workingHours: await this.getCompanyWorkingHours(companyId),
-                serviceInterval: company.intervalBetweenAppointments
-            }
-        };
     }
 
-    public async getCompanyWorkingHours(companyId: number) {
-        const workingHours = await this.prisma.companyWorkingHour.findMany({
-            where: { companyId },
-            orderBy: { dayOfWeek: 'asc' }
+    private async updateServiceInterval(
+        prisma: Prisma.TransactionClient,
+        companyId: number,
+        serviceInterval?: number
+    ): Promise<void> {
+        if (serviceInterval && serviceInterval >= 0) {
+            await prisma.company.update({
+                where: { id: companyId },
+                data: { intervalBetweenAppointments: serviceInterval }
+            });
+
+            this.logger.log('Service interval updated', {
+                companyId,
+                serviceInterval
+            });
+        }
+    }
+
+    private async removeOldWorkingHours(
+        prisma: Prisma.TransactionClient,
+        companyId: number,
+        incomingDays: number[]
+    ): Promise<void> {
+        const deletedHours = await prisma.companyWorkingHour.deleteMany({
+            where: {
+                companyId,
+                dayOfWeek: { notIn: incomingDays }
+            }
         });
 
-        return workingHours.map(hour => ({
-            dayOfWeek: hour.dayOfWeek,
-            startTime: hour.startTime,
-            endTime: hour.endTime
-        }));
+        this.logger.log('Old working hours deleted', {
+            companyId,
+            deletedCount: deletedHours.count
+        });
+    }
+
+    private async upsertCompanyWorkingHours(
+        prisma: Prisma.TransactionClient,
+        companyId: number,
+        workingHours: DailyWorkingHoursDto[]
+    ): Promise<void> {
+        for (const hour of workingHours) {
+            // Validar DayOfWeek
+            validateDayOfWeek(hour.dayOfWeek);
+
+            // Validar formato e range dos horários
+            validateTimeRange(hour.startTime, hour.endTime);
+
+            await prisma.companyWorkingHour.upsert({
+                where: {
+                    companyId_dayOfWeek: {
+                        companyId,
+                        dayOfWeek: hour.dayOfWeek
+                    }
+                },
+                update: {
+                    startTime: hour.startTime,
+                    endTime: hour.endTime
+                },
+                create: {
+                    companyId,
+                    dayOfWeek: hour.dayOfWeek,
+                    startTime: hour.startTime,
+                    endTime: hour.endTime
+                }
+            });
+        }
+
+        this.logger.log('Working hours updated successfully', {
+            companyId,
+            workingHoursCount: workingHours.length
+        });
     }
 
     private async isLinkExists(link: string): Promise<boolean> {

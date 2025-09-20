@@ -143,36 +143,6 @@ export class EmployeeService {
         return availableTimes;
     }
 
-    // ordem de prioridade: categoria -> funcionário -> empresa
-    private async getWorkingHoursForDay(
-        employeeCategoryWorkingHours: DailyWorkingHoursDto[],
-        workingHours: EmployeeWorkingHour[],
-        companyId: number,
-        dayOfWeek: number,
-        categoriesId?: number[]
-    ): Promise<DailyWorkingHoursDto | undefined> {
-        let workingHoursForDay: DailyWorkingHoursDto | undefined;
-
-        // 1. horários específicos da categoria
-        if (categoriesId && employeeCategoryWorkingHours?.length) {
-            workingHoursForDay = employeeCategoryWorkingHours.find(wh => wh.dayOfWeek === dayOfWeek);
-
-            // se tiver horarios configurados, mas não tiver pra esse dia, não trabalha (vale para os demais casos também)
-            return workingHoursForDay ?? undefined;
-        }
-
-        // 2. horários gerais do funcionário
-        if (!workingHoursForDay && workingHours?.length) {
-            workingHoursForDay = workingHours.find(wh => wh.dayOfWeek === dayOfWeek);
-            return workingHoursForDay ?? undefined;
-        }
-
-        // 3. horários da empresa
-        const companyWorkingHours = await this.companyService.getCompanyWorkingHours(companyId);
-        workingHoursForDay = companyWorkingHours.find(wh => wh.dayOfWeek === dayOfWeek);
-        return workingHoursForDay ?? undefined;
-    }
-
     public async isTimeAvailable(
         employeeId: number,
         proposedTime: Date,
@@ -243,9 +213,6 @@ export class EmployeeService {
         }
     }
 
-    /**
-     * Valida se os horários do funcionário estão dentro dos horários da empresa
-     */
     public async validateHierarchicalConstraints(
         companyId: number,
         workingHours: DailyWorkingHoursDto[]
@@ -322,13 +289,6 @@ export class EmployeeService {
                 employeeName: dto.profile.name
             });
 
-            const isAdminRequest = await this.userService.isUserAdmin(adminId);
-
-            if (!isAdminRequest) {
-                this.logger.warn('Non-admin user attempted to register employee', { adminId });
-                throw new UnauthorizedException('Apenas administradores podem cadastrar funcionários');
-            }
-
             const companyId = await this.companyService.findCompanyIdByUserId(adminId);
 
             this.logger.log('Creating employee profile with transaction', {
@@ -337,23 +297,10 @@ export class EmployeeService {
                 employeeName: dto.profile.name
             });
 
-            const nameExists = await prisma.employee.findFirst({
-                where: {
-                    name: dto.profile.name,
-                    companyId
-                }
-            });
-
-            if (nameExists) {
-                this.logger.warn('Attempt to register employee with duplicate name', {
-                    adminId,
-                    companyId,
-                    employeeName: dto.profile.name
-                });
-                throw new BadRequestException('Já existe um funcionário com este nome cadastrado na empresa');
-            }
-
             const employee = await this.transactionService.runInTransaction(async () => {
+                // Validar se funcionário pode ser registrado
+                await this.validateEmployeeRegistration(prisma, adminId, dto.profile.name, companyId);
+
                 // Criar funcionário
                 const newEmployee = await prisma.employee.create({
                     data: {
@@ -367,28 +314,15 @@ export class EmployeeService {
                 });
 
                 // Criar horários de trabalho se fornecidos
-                if (dto.workingHours?.workingHours && dto.workingHours.workingHours.length > 0) {
-                    const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
-                        const wh: DailyWorkingHoursDto = dto.workingHours.workingHours[dayOfWeek];
-                        return {
-                            employeeId: newEmployee.id,
-                            dayOfWeek: Number(dayOfWeek),
-                            startTime: wh.startTime,
-                            endTime: wh.endTime
-                        };
-                    });
-
-                    // Validar horários hierárquicos antes de criar
-                    await this.validateHierarchicalConstraints(companyId, workingHoursData);
-
-                    await prisma.employeeWorkingHour.createMany({
-                        data: workingHoursData
-                    });
-                }
+                await this.createEmployeeWorkingHours(
+                    prisma,
+                    newEmployee.id,
+                    companyId,
+                    dto.workingHours
+                );
 
                 return newEmployee;
-            }
-            );
+            });
 
             this.logger.log('Employee registration completed successfully', {
                 employeeId: employee.id,
@@ -412,116 +346,35 @@ export class EmployeeService {
 
             const prisma = this.transactionService.getPrismaInstance();
 
-            const isAdminRequest = await this.userService.isUserAdmin(userId);
-
-            if (!isAdminRequest && userId !== employeeId) {
-                this.logger.warn('Unauthorized employee update attempt', { userId, employeeId });
-                throw new UnauthorizedException('Apenas administradores podem atualizar funcionários');
-            }
-
-            await this.getOrThrowEmployeeById(employeeId);
+            // Validar autorização e existência do funcionário
+            await this.validateEmployeeUpdate(userId, employeeId);
 
             const updatedEmployee = await this.transactionService.runInTransaction(async () => {
                 // Atualizar dados básicos do funcionário
-                const employee = await prisma.employee.update({
-                    where: { id: employeeId },
-                    data: {
-                        name: dto.profile.name,
-                        phone: dto.profile.phone,
-                        displayOnline: dto.profile.displayOnline,
-                        position: dto.profile.position,
-                        profileImageUrl: dto.profile.profileImageUrl || null,
-                        serviceInterval: dto.workingHours.serviceInterval,
-                    },
-                });
+                const employee = await this.updateEmployeeBasicData(
+                    prisma,
+                    employeeId,
+                    dto.profile,
+                    dto.workingHours.serviceInterval
+                );
 
                 // Atualizar horários de trabalho
-                const { workingHours } = dto.workingHours;
-                // Validar horários hierárquicos antes de atualizar
-                await this.validateHierarchicalConstraints(employee.companyId, workingHours);
-
-                const incomingDays = workingHours.map(hour => hour.dayOfWeek);
-
-                // Deleta horários antigos que não estão mais presentes
-                await prisma.employeeWorkingHour.deleteMany({
-                    where: {
-                        employeeId,
-                        dayOfWeek: {
-                            notIn: incomingDays
-                        }
-                    }
-                });
-
-                // Upsert dos horários enviados
-                for (const wh of workingHours) {
-                    validateDayOfWeek(wh.dayOfWeek);
-                    validateTimeRange(wh.startTime, wh.endTime);
-
-                    await prisma.employeeWorkingHour.upsert({
-                        where: {
-                            employeeId_dayOfWeek: {
-                                employeeId,
-                                dayOfWeek: wh.dayOfWeek
-                            }
-                        },
-                        update: {
-                            startTime: wh.startTime,
-                            endTime: wh.endTime
-                        },
-                        create: {
-                            employeeId,
-                            dayOfWeek: wh.dayOfWeek,
-                            startTime: wh.startTime,
-                            endTime: wh.endTime
-                        }
-                    });
-                }
+                await this.updateEmployeeWorkingHours(
+                    prisma,
+                    employeeId,
+                    employee.companyId,
+                    dto.workingHours.workingHours
+                );
 
                 // Atualizar serviços do funcionário
-                const incomingServiceIds = dto?.employeeServices?.map(es => es.serviceId) || [];
-
-                // Deleta serviços antigos que não estão mais presentes
-                await prisma.employeeServices.deleteMany({
-                    where: {
-                        employeeId,
-                        serviceId: {
-                            notIn: incomingServiceIds
-                        }
-                    }
-                });
-
-                if(!dto.employeeServices || dto.employeeServices.length === 0) {
-                    return employee; // Se não houver serviços, pula a parte de inserção
-                }
-
-                // Buscar serviços que já existem para não duplicar
-                const existingServices = await prisma.employeeServices.findMany({
-                    where: {
-                        employeeId,
-                        serviceId: { in: incomingServiceIds }
-                    },
-                    select: { serviceId: true }
-                });
-
-                const existingServiceIds = existingServices.map(es => es.serviceId);
-
-                // Inserir apenas os novos
-                const newServices = dto.employeeServices
-                    .filter(es => !existingServiceIds.includes(es.serviceId))
-                    .map(es => ({
-                        employeeId,
-                        serviceId: es.serviceId
-                    }));
-
-                if (newServices.length > 0) {
-                    await prisma.employeeServices.createMany({
-                        data: newServices
-                    });
-                }
+                await this.updateEmployeeServices(
+                    prisma,
+                    employeeId,
+                    dto.employeeServices
+                );
 
                 return employee;
-            }
-            );
+            });
 
             this.logger.log('Employee updated successfully', {
                 employeeId,
@@ -589,5 +442,324 @@ export class EmployeeService {
             this.logger.error('Error getting services attended by professional', error.stack, { employeeId });
             throw error;
         }
+    }
+
+    private async createEmployeeWorkingHours(
+        prisma: Prisma.TransactionClient,
+        employeeId: number,
+        companyId: number,
+        workingHoursDto?: { workingHours: DailyWorkingHoursDto[] }
+    ): Promise<void> {
+        if (!workingHoursDto?.workingHours || workingHoursDto.workingHours.length === 0) {
+            return;
+        }
+
+        const workingHoursData = workingHoursDto.workingHours.map(wh => ({
+            employeeId,
+            dayOfWeek: wh.dayOfWeek,
+            startTime: wh.startTime,
+            endTime: wh.endTime
+        }));
+
+        // Validar horários hierárquicos antes de criar
+        await this.validateHierarchicalConstraints(companyId, workingHoursDto.workingHours);
+
+        await prisma.employeeWorkingHour.createMany({
+            data: workingHoursData
+        });
+
+        // Sincronizar horários de categorias com os horários do novo funcionário
+        await this.synchronizeEmployeeCategoryHours(employeeId, workingHoursDto.workingHours);
+    }
+
+    // ordem de prioridade: categoria -> funcionário -> empresa
+    private async getWorkingHoursForDay(
+        employeeCategoryWorkingHours: DailyWorkingHoursDto[],
+        workingHours: EmployeeWorkingHour[],
+        companyId: number,
+        dayOfWeek: number,
+        categoriesId?: number[]
+    ): Promise<DailyWorkingHoursDto | undefined> {
+        let workingHoursForDay: DailyWorkingHoursDto | undefined;
+
+        // 1. horários específicos da categoria
+        if (categoriesId && employeeCategoryWorkingHours?.length) {
+            workingHoursForDay = employeeCategoryWorkingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+
+            // se tiver horarios configurados, mas não tiver pra esse dia, não trabalha (vale para os demais casos também)
+            return workingHoursForDay ?? undefined;
+        }
+
+        // 2. horários gerais do funcionário
+        if (!workingHoursForDay && workingHours?.length) {
+            workingHoursForDay = workingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+            return workingHoursForDay ?? undefined;
+        }
+
+        // 3. horários da empresa
+        const companyWorkingHours = await this.companyService.getCompanyWorkingHours(companyId);
+        workingHoursForDay = companyWorkingHours.find(wh => wh.dayOfWeek === dayOfWeek);
+        return workingHoursForDay ?? undefined;
+    }
+
+    private async updateEmployeeBasicData(
+        prisma: Prisma.TransactionClient,
+        employeeId: number,
+        profileData: CreateEmployeeDto['profile'],
+        serviceInterval: number
+    ) {
+        return prisma.employee.update({
+            where: { id: employeeId },
+            data: {
+                name: profileData.name,
+                phone: profileData.phone,
+                displayOnline: profileData.displayOnline,
+                position: profileData.position,
+                profileImageUrl: profileData.profileImageUrl || null,
+                serviceInterval,
+            },
+        });
+    }
+
+    private async updateEmployeeWorkingHours(
+        prisma: Prisma.TransactionClient,
+        employeeId: number,
+        companyId: number,
+        workingHours: DailyWorkingHoursDto[]
+    ): Promise<void> {
+        // Validar horários hierárquicos antes de atualizar
+        await this.validateHierarchicalConstraints(companyId, workingHours);
+
+        const incomingDays = workingHours.map(hour => hour.dayOfWeek);
+
+        // Deleta horários antigos que não estão mais presentes
+        await prisma.employeeWorkingHour.deleteMany({
+            where: {
+                employeeId,
+                dayOfWeek: {
+                    notIn: incomingDays
+                }
+            }
+        });
+
+        // Upsert dos horários enviados
+        for (const wh of workingHours) {
+            validateDayOfWeek(wh.dayOfWeek);
+            validateTimeRange(wh.startTime, wh.endTime);
+
+            await prisma.employeeWorkingHour.upsert({
+                where: {
+                    employeeId_dayOfWeek: {
+                        employeeId,
+                        dayOfWeek: wh.dayOfWeek
+                    }
+                },
+                update: {
+                    startTime: wh.startTime,
+                    endTime: wh.endTime
+                },
+                create: {
+                    employeeId,
+                    dayOfWeek: wh.dayOfWeek,
+                    startTime: wh.startTime,
+                    endTime: wh.endTime
+                }
+            });
+        }
+
+        // Sincronizar horários de categorias com os novos horários do funcionário
+        await this.synchronizeEmployeeCategoryHours(employeeId, workingHours);
+    }
+
+    private async updateEmployeeServices(
+        prisma: Prisma.TransactionClient,
+        employeeId: number,
+        employeeServices?: { serviceId: number }[]
+    ): Promise<void> {
+        const incomingServiceIds = employeeServices?.map(es => es.serviceId) || [];
+
+        // Deleta serviços antigos que não estão mais presentes
+        await prisma.employeeServices.deleteMany({
+            where: {
+                employeeId,
+                serviceId: {
+                    notIn: incomingServiceIds
+                }
+            }
+        });
+
+        if (!employeeServices || employeeServices.length === 0) {
+            return; // Se não houver serviços, pula a parte de inserção
+        }
+
+        // Buscar serviços que já existem para não duplicar
+        const existingServices = await prisma.employeeServices.findMany({
+            where: {
+                employeeId,
+                serviceId: { in: incomingServiceIds }
+            },
+            select: { serviceId: true }
+        });
+
+        const existingServiceIds = existingServices.map(es => es.serviceId);
+
+        // Inserir apenas os novos
+        const newServices = employeeServices
+            .filter(es => !existingServiceIds.includes(es.serviceId))
+            .map(es => ({
+                employeeId,
+                serviceId: es.serviceId
+            }));
+
+        if (newServices.length > 0) {
+            await prisma.employeeServices.createMany({
+                data: newServices
+            });
+        }
+    }
+
+    private async validateEmployeeRegistration(
+        prisma: Prisma.TransactionClient,
+        adminId: number,
+        employeeName: string,
+        companyId: number
+    ): Promise<void> {
+        const isAdminRequest = await this.userService.isUserAdmin(adminId);
+
+        if (!isAdminRequest) {
+            this.logger.warn('Non-admin user attempted to register employee', { adminId });
+            throw new UnauthorizedException('Apenas administradores podem cadastrar funcionários');
+        }
+
+        const nameExists = await prisma.employee.findFirst({
+            where: {
+                name: employeeName,
+                companyId
+            }
+        });
+
+        if (nameExists) {
+            this.logger.warn('Attempt to register employee with duplicate name', {
+                adminId,
+                companyId,
+                employeeName
+            });
+            throw new BadRequestException('Já existe um funcionário com este nome cadastrado na empresa');
+        }
+    }
+
+    private async validateEmployeeUpdate(userId: number, employeeId: number): Promise<void> {
+        const isAdminRequest = await this.userService.isUserAdmin(userId);
+
+        if (!isAdminRequest && userId !== employeeId) {
+            this.logger.warn('Unauthorized employee update attempt', { userId, employeeId });
+            throw new UnauthorizedException('Apenas administradores podem atualizar funcionários');
+        }
+
+        await this.getOrThrowEmployeeById(employeeId);
+    }
+
+    /**
+     * Sincroniza horários de categorias com os horários de funcionário
+     * Remove dias que não existem mais no funcionário e ajusta horários que estão fora do novo range
+     */
+    private async synchronizeEmployeeCategoryHours(
+        employeeId: number,
+        newEmployeeHours: DailyWorkingHoursDto[]
+    ): Promise<void> {
+        const prisma = this.transactionService.getPrismaInstance();
+        
+        this.logger.log('Starting synchronization of employee category hours', { 
+            employeeId, 
+            newEmployeeHoursCount: newEmployeeHours.length 
+        });
+
+        const employeeWorkingDays = newEmployeeHours.map(h => h.dayOfWeek);
+        
+        // 1. Remover horários de categorias para dias que o funcionário não atende mais
+        const deletedCategoryHours = await prisma.employeeCategoryWorkingHour.deleteMany({
+            where: {
+                employeeId,
+                dayOfWeek: { notIn: employeeWorkingDays }
+            }
+        });
+        
+        this.logger.log('Deleted category hours for removed days', { 
+            employeeId, 
+            deletedCount: deletedCategoryHours.count 
+        });
+
+        // 2. Ajustar horários de categorias que estão fora do novo range do funcionário
+        for (const employeeHour of newEmployeeHours) {
+            const categoryHours = await prisma.employeeCategoryWorkingHour.findMany({
+                where: {
+                    employeeId,
+                    dayOfWeek: employeeHour.dayOfWeek
+                }
+            });
+
+            for (const categoryHour of categoryHours) {
+                const adjustedHours = this.adjustHourToEmployeeRange(
+                    categoryHour.startTime,
+                    categoryHour.endTime,
+                    employeeHour.startTime,
+                    employeeHour.endTime
+                );
+
+                if (adjustedHours) {
+                    await prisma.employeeCategoryWorkingHour.update({
+                        where: { id: categoryHour.id },
+                        data: {
+                            startTime: adjustedHours.startTime,
+                            endTime: adjustedHours.endTime
+                        }
+                    });
+
+                    this.logger.log('Adjusted category working hour', {
+                        employeeId,
+                        categoryHourId: categoryHour.id,
+                        dayOfWeek: employeeHour.dayOfWeek,
+                        originalStart: categoryHour.startTime,
+                        originalEnd: categoryHour.endTime,
+                        adjustedStart: adjustedHours.startTime,
+                        adjustedEnd: adjustedHours.endTime
+                    });
+                }
+            }
+        }
+
+        this.logger.log('Synchronization of employee category hours completed', { employeeId });
+    }
+
+    private adjustHourToEmployeeRange(
+        currentStart: string,
+        currentEnd: string,
+        employeeStart: string,
+        employeeEnd: string
+    ): { startTime: string; endTime: string } | null {
+        const currentStartMinutes = parseTimeToMinutes(currentStart);
+        const currentEndMinutes = parseTimeToMinutes(currentEnd);
+        const employeeStartMinutes = parseTimeToMinutes(employeeStart);
+        const employeeEndMinutes = parseTimeToMinutes(employeeEnd);
+
+        // Se o horário atual está completamente dentro do horário da empresa, não precisa ajustar
+        if (currentStartMinutes >= employeeStartMinutes && currentEndMinutes <= employeeEndMinutes) {
+            return null; // Não precisa ajustar
+        }
+
+        // Calcular novo horário ajustado
+        let newStartMinutes = Math.max(currentStartMinutes, employeeStartMinutes);
+        let newEndMinutes = Math.min(currentEndMinutes, employeeEndMinutes);
+
+        // Se o início ajustado for maior ou igual ao fim, não é possível ajustar
+        if (newStartMinutes >= newEndMinutes) {
+            return null;
+        }
+
+        // Converter de volta para string HH:mm
+        const newStartTime = `${Math.floor(newStartMinutes / 60).toString().padStart(2, '0')}:${(newStartMinutes % 60).toString().padStart(2, '0')}`;
+        const newEndTime = `${Math.floor(newEndMinutes / 60).toString().padStart(2, '0')}:${(newEndMinutes % 60).toString().padStart(2, '0')}`;
+
+        return { startTime: newStartTime, endTime: newEndTime };
     }
 }
