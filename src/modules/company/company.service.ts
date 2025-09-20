@@ -5,7 +5,7 @@ import slugify from 'slugify';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import { CreateCompanyAddressDTO } from './dto/create-company-address.dto';
 import { CompanyWorkingHoursDto, DailyWorkingHoursDto } from '../settings/dto/company-working-hours.dto';
-import { parseTimeToMinutes, validateTimeRange, validateDayOfWeek } from 'src/common/helpers/time.helper';
+import { parseTimeToMinutes, validateTimeRange, validateDayOfWeek, isTimeWithinRange } from 'src/common/helpers/time.helper';
 import { dayNames } from 'src/common/helpers/date.helper';
 import { CategoryService } from '../category/category.service';
 import { TransactionService } from '../../common/services/transaction-context.service';
@@ -257,6 +257,9 @@ export class CompanyService {
                     workingHoursCount: data.workingHours.length
                 });
 
+                // Sincronizar horários de funcionários e categorias
+                await this.synchronizeEmployeeAndCategoryHours(companyId, data.workingHours);
+
                 return { success: true };
             }
             );
@@ -266,6 +269,176 @@ export class CompanyService {
             this.logger.error('Company working hours update failed', error.stack, { companyId });
             throw error;
         }
+    }
+
+    /**
+     * Sincroniza horários de funcionários e categorias com os horários da empresa
+     * Remove dias que não existem mais na empresa e ajusta horários que estão fora do novo range
+     */
+    private async synchronizeEmployeeAndCategoryHours(
+        companyId: number, 
+        newCompanyHours: DailyWorkingHoursDto[]
+    ): Promise<void> {
+        const prisma = this.transactionService.getPrismaInstance();
+        
+        this.logger.log('Starting synchronization of employee and category hours', { 
+            companyId, 
+            newCompanyHoursCount: newCompanyHours.length 
+        });
+
+        const companyWorkingDays = newCompanyHours.map(h => h.dayOfWeek);
+        
+        // 1. Remover horários de funcionários para dias que a empresa não funciona mais
+        const deletedEmployeeHours = await prisma.employeeWorkingHour.deleteMany({
+            where: {
+                employee: { companyId },
+                dayOfWeek: { notIn: companyWorkingDays }
+            }
+        });
+        
+        this.logger.log('Deleted employee hours for removed days', { 
+            companyId, 
+            deletedCount: deletedEmployeeHours.count 
+        });
+
+        // 2. Remover horários de categorias para dias que a empresa não funciona mais
+        const deletedCategoryHours = await prisma.employeeCategoryWorkingHour.deleteMany({
+            where: {
+                employee: { companyId },
+                dayOfWeek: { notIn: companyWorkingDays }
+            }
+        });
+
+        this.logger.log('Deleted category hours for removed days', { 
+            companyId, 
+            deletedCount: deletedCategoryHours.count 
+        });
+
+        for (const companyHour of newCompanyHours) {
+            // 3. Ajustar horários de funcionários que estão fora do novo range da empresa
+            const employeeHours = await prisma.employeeWorkingHour.findMany({
+                where: {
+                    employee: { companyId },
+                    dayOfWeek: companyHour.dayOfWeek
+                }
+            });
+
+            for (const employeeHour of employeeHours) {
+                const adjustedHours = this.adjustHourToCompanyRange(
+                    employeeHour.startTime,
+                    employeeHour.endTime,
+                    companyHour.startTime,
+                    companyHour.endTime
+                );
+
+                if (adjustedHours) {
+                    await prisma.employeeWorkingHour.update({
+                        where: { id: employeeHour.id },
+                        data: {
+                            startTime: adjustedHours.startTime,
+                            endTime: adjustedHours.endTime
+                        }
+                    });
+
+                    this.logger.log('Adjusted employee working hour', {
+                        companyId,
+                        employeeHourId: employeeHour.id,
+                        originalStart: employeeHour.startTime,
+                        originalEnd: employeeHour.endTime,
+                        adjustedStart: adjustedHours.startTime,
+                        adjustedEnd: adjustedHours.endTime
+                    });
+                }
+            }
+
+            // 4. Ajustar horários de categorias que estão fora do novo range
+            const categoryHours = await prisma.employeeCategoryWorkingHour.findMany({
+                where: {
+                    employee: { companyId },
+                    dayOfWeek: companyHour.dayOfWeek
+                },
+                include: {
+                    employee: {
+                        select: {
+                            workingHours: {
+                                where: { dayOfWeek: companyHour.dayOfWeek }
+                            }
+                        }
+                    }
+                }
+            });
+
+            for (const categoryHour of categoryHours) {
+                // Para categorias, precisa verificar tanto o horário da empresa quanto do funcionário
+                const employeeHourForDay = categoryHour.employee.workingHours[0];
+                const referenceStart = employeeHourForDay?.startTime || companyHour.startTime;
+                const referenceEnd = employeeHourForDay?.endTime || companyHour.endTime;
+
+                const adjustedHours = this.adjustHourToCompanyRange(
+                    categoryHour.startTime,
+                    categoryHour.endTime,
+                    referenceStart,
+                    referenceEnd
+                );
+
+                if (adjustedHours) {
+                    await prisma.employeeCategoryWorkingHour.update({
+                        where: { id: categoryHour.id },
+                        data: {
+                            startTime: adjustedHours.startTime,
+                            endTime: adjustedHours.endTime
+                        }
+                    });
+
+                    this.logger.log('Adjusted category working hour', {
+                        companyId,
+                        categoryHourId: categoryHour.id,
+                        originalStart: categoryHour.startTime,
+                        originalEnd: categoryHour.endTime,
+                        adjustedStart: adjustedHours.startTime,
+                        adjustedEnd: adjustedHours.endTime
+                    });
+                }
+            }
+        }
+
+        this.logger.log('Synchronization of employee and category hours completed', { companyId });
+    }
+
+    /**
+     * Ajusta um horário para ficar dentro do range da empresa
+     * Retorna null se não for possível ajustar
+     */
+    private adjustHourToCompanyRange(
+        currentStart: string,
+        currentEnd: string,
+        companyStart: string,
+        companyEnd: string
+    ): { startTime: string; endTime: string } | null {
+        const currentStartMinutes = parseTimeToMinutes(currentStart);
+        const currentEndMinutes = parseTimeToMinutes(currentEnd);
+        const companyStartMinutes = parseTimeToMinutes(companyStart);
+        const companyEndMinutes = parseTimeToMinutes(companyEnd);
+
+        // Se o horário atual está completamente dentro do horário da empresa, não precisa ajustar
+        if (currentStartMinutes >= companyStartMinutes && currentEndMinutes <= companyEndMinutes) {
+            return null; // Não precisa ajustar
+        }
+
+        // Calcular novo horário ajustado
+        let newStartMinutes = Math.max(currentStartMinutes, companyStartMinutes);
+        let newEndMinutes = Math.min(currentEndMinutes, companyEndMinutes);
+
+        // Se o início ajustado for maior ou igual ao fim, não é possível ajustar
+        if (newStartMinutes >= newEndMinutes) {
+            return null;
+        }
+
+        // Converter de volta para string HH:mm
+        const newStartTime = `${Math.floor(newStartMinutes / 60).toString().padStart(2, '0')}:${(newStartMinutes % 60).toString().padStart(2, '0')}`;
+        const newEndTime = `${Math.floor(newEndMinutes / 60).toString().padStart(2, '0')}:${(newEndMinutes % 60).toString().padStart(2, '0')}`;
+
+        return { startTime: newStartTime, endTime: newEndTime };
     }
 
     public async updateCompanyProfile(companyId: number, data: UpdateCompanyProfileDto) {

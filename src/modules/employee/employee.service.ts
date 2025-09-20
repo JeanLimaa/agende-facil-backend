@@ -7,7 +7,7 @@ import { is, ptBR } from 'date-fns/locale';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CompanyService } from '../company/company.service';
 import { UserService } from '../user/user.service';
-import { parseTimeToMinutes, validateDayOfWeek, validateTimeRange } from 'src/common/helpers/time.helper';
+import { parseTimeToMinutes, validateDayOfWeek, validateTimeRange, isTimeWithinRange, isValidTimeFormat } from 'src/common/helpers/time.helper';
 import { TransactionService } from '../../common/services/transaction-context.service';
 import { DailyWorkingHoursDto } from '../settings/dto/company-working-hours.dto';
 import { ServiceService } from '../service/service.service';
@@ -42,10 +42,10 @@ export class EmployeeService {
                 throw new BadRequestException('Funcionário não encontrado');
             }
 
-            this.logger.log('Employee found successfully', { 
-                employeeId, 
+            this.logger.log('Employee found successfully', {
+                employeeId,
                 employeeName: employee.name,
-                companyId: employee.companyId 
+                companyId: employee.companyId
             });
 
             return employee;
@@ -68,9 +68,9 @@ export class EmployeeService {
                 }
             });
 
-            this.logger.log('Employees listed successfully', { 
-                companyId, 
-                employeeCount: employees.length 
+            this.logger.log('Employees listed successfully', {
+                companyId,
+                employeeCount: employees.length
             });
 
             return employees;
@@ -84,8 +84,8 @@ export class EmployeeService {
     public async getAvailableTimes(employeeId: number, date: string, dto: GetAvailableTimesDTO) {
         const services = await this.servicesService.getByIdsWithCategory(dto.servicesId);
         const categoriesId = services.map(s => s.categoryId);
-        
-        const employee = await this.prisma.employee.findUnique({ 
+
+        const employee = await this.prisma.employee.findUnique({
             where: { id: employeeId },
             include: {
                 workingHours: true,
@@ -99,18 +99,18 @@ export class EmployeeService {
         });
 
         if (!employee) throw new BadRequestException('Funcionário não encontrado');
-        
+
         const parsedDate = parseISO(date + " 00:00:00");
         if (isNaN(parsedDate.getTime())) throw new BadRequestException('Data inválida. Esperado formato: "yyyy-MM-dd"');
-     
+
         const today = startOfDay(new Date());
-        if(isBefore(parsedDate, today)) throw new BadRequestException('A data não pode ser anterior a hoje.');
+        if (isBefore(parsedDate, today)) throw new BadRequestException('A data não pode ser anterior a hoje.');
 
         const dayOfWeek = parsedDate.getDay();
 
         // Verificar se existem horários específicos para a categoria
         const workingHoursForDay = await this.getWorkingHoursForDay(
-            employee.employeeCategoryWorkingHours, 
+            employee.employeeCategoryWorkingHours,
             employee.workingHours,
             employee.companyId,
             dayOfWeek,
@@ -124,16 +124,16 @@ export class EmployeeService {
         const employeeStartHour = parseTimeToMinutes(workingHoursForDay.startTime);
         const employeeEndHour = parseTimeToMinutes(workingHoursForDay.endTime);
         const interval = employee.serviceInterval;
-        
+
         const dayStart = startOfDay(parsedDate);
 
         const availableTimes: string[] = [];
-        
+
         for (let minutes = employeeStartHour; minutes <= employeeEndHour; minutes += interval) {
             const proposedTime = addMinutes(dayStart, minutes);
-        
+
             const isAvailable = await this.isTimeAvailable(employeeId, proposedTime, interval);
-            
+
             if (isAvailable) {
                 const time = format(proposedTime, 'HH:mm', { locale: ptBR });
                 availableTimes.push(time);
@@ -145,10 +145,10 @@ export class EmployeeService {
 
     // ordem de prioridade: categoria -> funcionário -> empresa
     private async getWorkingHoursForDay(
-        employeeCategoryWorkingHours: DailyWorkingHoursDto[], 
-        workingHours: EmployeeWorkingHour[], 
+        employeeCategoryWorkingHours: DailyWorkingHoursDto[],
+        workingHours: EmployeeWorkingHour[],
         companyId: number,
-        dayOfWeek: number, 
+        dayOfWeek: number,
         categoriesId?: number[]
     ): Promise<DailyWorkingHoursDto | undefined> {
         let workingHoursForDay: DailyWorkingHoursDto | undefined;
@@ -158,7 +158,7 @@ export class EmployeeService {
             workingHoursForDay = employeeCategoryWorkingHours.find(wh => wh.dayOfWeek === dayOfWeek);
 
             // se tiver horarios configurados, mas não tiver pra esse dia, não trabalha (vale para os demais casos também)
-            return workingHoursForDay ?? undefined; 
+            return workingHoursForDay ?? undefined;
         }
 
         // 2. horários gerais do funcionário
@@ -211,45 +211,115 @@ export class EmployeeService {
             const appointmentEnd = addMinutes(appointmentStart, appointmentDuration);
 
             const isIntersecting = isBefore(proposedTime, appointmentEnd) && isAfter(proposedTime, appointmentStart);
-            
+
             return isEqual(proposedTime, appointmentStart) || isIntersecting;
         });
     }
 
-    public async createEmployee(data: Prisma.EmployeeCreateManyInput){
+    public async createEmployee(data: Prisma.EmployeeCreateManyInput) {
         try {
-            this.logger.log('Creating new employee', { 
-                name: data.name, 
-                companyId: data.companyId 
+            this.logger.log('Creating new employee', {
+                name: data.name,
+                companyId: data.companyId
             });
 
             const employee = await this.prisma.employee.create({
                 data
             });
 
-            this.logger.log('Employee created successfully', { 
-                employeeId: employee.id, 
+            this.logger.log('Employee created successfully', {
+                employeeId: employee.id,
                 name: employee.name,
-                companyId: employee.companyId 
+                companyId: employee.companyId
             });
 
             return employee;
         } catch (error) {
-            this.logger.error('Error creating employee', error.stack, { 
-                name: data.name, 
-                companyId: data.companyId 
+            this.logger.error('Error creating employee', error.stack, {
+                name: data.name,
+                companyId: data.companyId
             });
             throw error;
         }
+    }
+
+    /**
+     * Valida se os horários do funcionário estão dentro dos horários da empresa
+     */
+    public async validateHierarchicalConstraints(
+        companyId: number,
+        workingHours: DailyWorkingHoursDto[]
+    ): Promise<void> {
+        this.logger.log('Validating hierarchical constraints for employee working hours', {
+            companyId,
+            workingHoursCount: workingHours.length
+        });
+
+        // Buscar horários da empresa
+        const companyWorkingHours = await this.companyService.getCompanyWorkingHours(companyId);
+
+        for (const employeeHour of workingHours) {
+            // Validar formato dos horários
+            if (!isValidTimeFormat(employeeHour.startTime)) {
+                throw new BadRequestException(`Horário de início inválido: ${employeeHour.startTime}. Use o formato HH:mm`);
+            }
+
+            if (!isValidTimeFormat(employeeHour.endTime)) {
+                throw new BadRequestException(`Horário de término inválido: ${employeeHour.endTime}. Use o formato HH:mm`);
+            }
+
+            // Validar range básico
+            validateTimeRange(employeeHour.startTime, employeeHour.endTime);
+
+            // Buscar horário da empresa para o mesmo dia
+            const companyHourForDay = companyWorkingHours.find(
+                ch => ch.dayOfWeek === employeeHour.dayOfWeek
+            );
+
+            if (!companyHourForDay) {
+                const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+                throw new BadRequestException(
+                    `A empresa não funciona no dia ${dayNames[employeeHour.dayOfWeek]}. ` +
+                    `O funcionário não pode ter horários configurados para este dia.`
+                );
+            }
+
+            // Validar se o horário do funcionário está dentro do horário da empresa
+            const employeeStart = employeeHour.startTime;
+            const employeeEnd = employeeHour.endTime;
+            const companyStart = companyHourForDay.startTime;
+            const companyEnd = companyHourForDay.endTime;
+
+            if (!isTimeWithinRange(employeeStart, companyStart, companyEnd)) {
+                const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+                throw new BadRequestException(
+                    `Horário de início do funcionário (${employeeStart}) está fora do horário de funcionamento da empresa. ` +
+                    `${dayNames[employeeHour.dayOfWeek]}: ${companyStart} às ${companyEnd}`
+                );
+            }
+
+            if (!isTimeWithinRange(employeeEnd, companyStart, companyEnd)) {
+                const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+                throw new BadRequestException(
+                    `Horário de término do funcionário (${employeeEnd}) está fora do horário de funcionamento da empresa. ` +
+                    `${dayNames[employeeHour.dayOfWeek]}: ${companyStart} às ${companyEnd}`
+                );
+            }
+        }
+
+        this.logger.log('Hierarchical constraints validation passed', {
+            companyId,
+            workingHoursCount: workingHours.length
+        });
     }
 
     public async registerEmployee(adminId: number, dto: CreateEmployeeDto) {
         try {
             const prisma = this.transactionService.getPrismaInstance();
 
-            this.logger.log('Starting employee registration', { 
-                adminId, 
-                employeeName: dto.profile.name 
+            this.logger.log('Starting employee registration', {
+                adminId,
+                employeeName: dto.profile.name
             });
 
             const isAdminRequest = await this.userService.isUserAdmin(adminId);
@@ -260,23 +330,23 @@ export class EmployeeService {
             }
 
             const companyId = await this.companyService.findCompanyIdByUserId(adminId);
-            
-            this.logger.log('Creating employee profile with transaction', { 
-                adminId, 
-                companyId, 
-                employeeName: dto.profile.name 
+
+            this.logger.log('Creating employee profile with transaction', {
+                adminId,
+                companyId,
+                employeeName: dto.profile.name
             });
 
             const nameExists = await prisma.employee.findFirst({
-                where: { 
+                where: {
                     name: dto.profile.name,
                     companyId
                 }
             });
 
             if (nameExists) {
-                this.logger.warn('Attempt to register employee with duplicate name', { 
-                    adminId, 
+                this.logger.warn('Attempt to register employee with duplicate name', {
+                    adminId,
                     companyId,
                     employeeName: dto.profile.name
                 });
@@ -284,50 +354,53 @@ export class EmployeeService {
             }
 
             const employee = await this.transactionService.runInTransaction(async () => {
-                    // Criar funcionário
-                    const newEmployee = await prisma.employee.create({
-                        data: {
-                            companyId,
-                            name: dto.profile.name,
-                            phone: dto.profile.phone,
-                            displayOnline: dto.profile.displayOnline,
-                            position: dto.profile.position,
-                            profileImageUrl: dto.profile.profileImageUrl || null,
-                        }
+                // Criar funcionário
+                const newEmployee = await prisma.employee.create({
+                    data: {
+                        companyId,
+                        name: dto.profile.name,
+                        phone: dto.profile.phone,
+                        displayOnline: dto.profile.displayOnline,
+                        position: dto.profile.position,
+                        profileImageUrl: dto.profile.profileImageUrl || null,
+                    }
+                });
+
+                // Criar horários de trabalho se fornecidos
+                if (dto.workingHours?.workingHours && dto.workingHours.workingHours.length > 0) {
+                    const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
+                        const wh: DailyWorkingHoursDto = dto.workingHours.workingHours[dayOfWeek];
+                        return {
+                            employeeId: newEmployee.id,
+                            dayOfWeek: Number(dayOfWeek),
+                            startTime: wh.startTime,
+                            endTime: wh.endTime
+                        };
                     });
 
-                    // Criar horários de trabalho se fornecidos
-                    if(dto.workingHours?.workingHours && dto.workingHours.workingHours.length > 0) {
-                        const workingHoursData = Object.keys(dto.workingHours.workingHours).map(dayOfWeek => {
-                            const wh: DailyWorkingHoursDto = dto.workingHours.workingHours[dayOfWeek];
-                            return {
-                                employeeId: newEmployee.id,
-                                dayOfWeek: Number(dayOfWeek),
-                                startTime: wh.startTime,
-                                endTime: wh.endTime
-                            };
-                        });
+                    // Validar horários hierárquicos antes de criar
+                    await this.validateHierarchicalConstraints(companyId, workingHoursData);
 
-                        await prisma.employeeWorkingHour.createMany({
-                            data: workingHoursData
-                        });
-                    }
-
-                    return newEmployee;
+                    await prisma.employeeWorkingHour.createMany({
+                        data: workingHoursData
+                    });
                 }
+
+                return newEmployee;
+            }
             );
 
-            this.logger.log('Employee registration completed successfully', { 
-                employeeId: employee.id, 
-                adminId, 
-                companyId 
+            this.logger.log('Employee registration completed successfully', {
+                employeeId: employee.id,
+                adminId,
+                companyId
             });
 
             return employee;
         } catch (error) {
-            this.logger.error('Employee registration failed', error.stack, { 
-                adminId, 
-                employeeName: dto.profile.name 
+            this.logger.error('Employee registration failed', error.stack, {
+                adminId,
+                employeeName: dto.profile.name
             });
             throw error;
         }
@@ -349,108 +422,111 @@ export class EmployeeService {
             await this.getOrThrowEmployeeById(employeeId);
 
             const updatedEmployee = await this.transactionService.runInTransaction(async () => {
-                    // Atualizar dados básicos do funcionário
-                    const employee = await prisma.employee.update({
-                        where: { id: employeeId },
-                        data: {
-                            name: dto.profile.name,
-                            phone: dto.profile.phone,
-                            displayOnline: dto.profile.displayOnline,
-                            position: dto.profile.position,
-                            profileImageUrl: dto.profile.profileImageUrl || null,
-                            serviceInterval: dto.workingHours.serviceInterval,
+                // Atualizar dados básicos do funcionário
+                const employee = await prisma.employee.update({
+                    where: { id: employeeId },
+                    data: {
+                        name: dto.profile.name,
+                        phone: dto.profile.phone,
+                        displayOnline: dto.profile.displayOnline,
+                        position: dto.profile.position,
+                        profileImageUrl: dto.profile.profileImageUrl || null,
+                        serviceInterval: dto.workingHours.serviceInterval,
+                    },
+                });
+
+                // Atualizar horários de trabalho
+                const { workingHours } = dto.workingHours;
+                // Validar horários hierárquicos antes de atualizar
+                await this.validateHierarchicalConstraints(employee.companyId, workingHours);
+
+                const incomingDays = workingHours.map(hour => hour.dayOfWeek);
+
+                // Deleta horários antigos que não estão mais presentes
+                await prisma.employeeWorkingHour.deleteMany({
+                    where: {
+                        employeeId,
+                        dayOfWeek: {
+                            notIn: incomingDays
+                        }
+                    }
+                });
+
+                // Upsert dos horários enviados
+                for (const wh of workingHours) {
+                    validateDayOfWeek(wh.dayOfWeek);
+                    validateTimeRange(wh.startTime, wh.endTime);
+
+                    await prisma.employeeWorkingHour.upsert({
+                        where: {
+                            employeeId_dayOfWeek: {
+                                employeeId,
+                                dayOfWeek: wh.dayOfWeek
+                            }
                         },
+                        update: {
+                            startTime: wh.startTime,
+                            endTime: wh.endTime
+                        },
+                        create: {
+                            employeeId,
+                            dayOfWeek: wh.dayOfWeek,
+                            startTime: wh.startTime,
+                            endTime: wh.endTime
+                        }
                     });
-
-                    // Atualizar horários de trabalho
-                    const { workingHours } = dto.workingHours;
-                    if (workingHours && workingHours.length > 0) {
-                        const incomingDays = workingHours.map(hour => hour.dayOfWeek);
-
-                        // Deleta horários antigos que não estão mais presentes
-                        await prisma.employeeWorkingHour.deleteMany({
-                            where: {
-                                employeeId,
-                                dayOfWeek: {
-                                    notIn: incomingDays
-                                }
-                            }
-                        });
-
-                        // Upsert dos horários enviados
-                        for (const wh of workingHours) {
-                            validateDayOfWeek(wh.dayOfWeek);
-                            validateTimeRange(wh.startTime, wh.endTime);
-
-                            await prisma.employeeWorkingHour.upsert({
-                                where: {
-                                    employeeId_dayOfWeek: {
-                                        employeeId,
-                                        dayOfWeek: wh.dayOfWeek
-                                    }
-                                },
-                                update: {
-                                    startTime: wh.startTime,
-                                    endTime: wh.endTime
-                                },
-                                create: {
-                                    employeeId,
-                                    dayOfWeek: wh.dayOfWeek,
-                                    startTime: wh.startTime,
-                                    endTime: wh.endTime
-                                }
-                            });
-                        }
-                    }
-
-                    // Atualizar serviços do funcionário
-                    if (dto.employeeServices && dto.employeeServices.length > 0) {
-                        const incomingServiceIds = dto.employeeServices.map(es => es.serviceId);
-
-                        // Deleta serviços antigos que não estão mais presentes
-                        await prisma.employeeServices.deleteMany({
-                            where: {
-                                employeeId,
-                                serviceId: {
-                                    notIn: incomingServiceIds
-                                }
-                            }
-                        });
-
-                        // Buscar serviços que já existem para não duplicar
-                        const existingServices = await prisma.employeeServices.findMany({
-                            where: {
-                                employeeId,
-                                serviceId: { in: incomingServiceIds }
-                            },
-                            select: { serviceId: true }
-                        });
-
-                        const existingServiceIds = existingServices.map(es => es.serviceId);
-
-                        // Inserir apenas os novos
-                        const newServices = dto.employeeServices
-                            .filter(es => !existingServiceIds.includes(es.serviceId))
-                            .map(es => ({
-                                employeeId,
-                                serviceId: es.serviceId
-                            }));
-
-                        if (newServices.length > 0) {
-                            await prisma.employeeServices.createMany({
-                                data: newServices
-                            });
-                        }
-                    }
-
-                    return employee;
                 }
+
+                // Atualizar serviços do funcionário
+                const incomingServiceIds = dto?.employeeServices?.map(es => es.serviceId) || [];
+
+                // Deleta serviços antigos que não estão mais presentes
+                await prisma.employeeServices.deleteMany({
+                    where: {
+                        employeeId,
+                        serviceId: {
+                            notIn: incomingServiceIds
+                        }
+                    }
+                });
+
+                if(!dto.employeeServices || dto.employeeServices.length === 0) {
+                    return employee; // Se não houver serviços, pula a parte de inserção
+                }
+
+                // Buscar serviços que já existem para não duplicar
+                const existingServices = await prisma.employeeServices.findMany({
+                    where: {
+                        employeeId,
+                        serviceId: { in: incomingServiceIds }
+                    },
+                    select: { serviceId: true }
+                });
+
+                const existingServiceIds = existingServices.map(es => es.serviceId);
+
+                // Inserir apenas os novos
+                const newServices = dto.employeeServices
+                    .filter(es => !existingServiceIds.includes(es.serviceId))
+                    .map(es => ({
+                        employeeId,
+                        serviceId: es.serviceId
+                    }));
+
+                if (newServices.length > 0) {
+                    await prisma.employeeServices.createMany({
+                        data: newServices
+                    });
+                }
+
+                return employee;
+            }
             );
 
-            this.logger.log('Employee updated successfully', { 
-                employeeId, 
-                userId, 
-                employeeName: updatedEmployee.name 
+            this.logger.log('Employee updated successfully', {
+                employeeId,
+                userId,
+                employeeName: updatedEmployee.name
             });
 
             return updatedEmployee;
@@ -479,10 +555,10 @@ export class EmployeeService {
                 }
             });
 
-            this.logger.log('Employee soft deleted successfully', { 
-                employeeId, 
-                userId, 
-                employeeName: deletedEmployee.name 
+            this.logger.log('Employee soft deleted successfully', {
+                employeeId,
+                userId,
+                employeeName: deletedEmployee.name
             });
 
             return deletedEmployee;
@@ -503,11 +579,11 @@ export class EmployeeService {
                 }
             });
 
-            this.logger.log('Services retrieved successfully', { 
-                employeeId, 
-                serviceCount: employeeServices.length 
+            this.logger.log('Services retrieved successfully', {
+                employeeId,
+                serviceCount: employeeServices.length
             });
-            
+
             return employeeServices;
         } catch (error) {
             this.logger.error('Error getting services attended by professional', error.stack, { employeeId });
